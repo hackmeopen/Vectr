@@ -67,9 +67,9 @@
  * Implementation of functions defined in portable.h for the PIC32MX port.
   *----------------------------------------------------------*/
 
-#ifndef __XC
-    #error This port is designed to work with XC32.  Please update your C compiler version.
-#endif
+//#ifndef __XC
+//    #error This port is designed to work with XC32.  Please update your C compiler version.
+//#endif
 
 /* Scheduler include files. */
 #include "FreeRTOS.h"

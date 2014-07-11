@@ -1,8 +1,11 @@
 /*******************************************************************************
  System Interrupt Source File
 
+  Company:
+    Microchip Technology Inc.
+  
   File Name:
-    system_int.c
+    system_interrupt.c
 
   Summary:
     Raw ISR definitions.
@@ -37,22 +40,17 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
  *******************************************************************************/
 // DOM-IGNORE-END
 
-#include "app.h"
+#include <xc.h>
 #include <sys/attribs.h>
-#include "system_config.h"
+#include "app.h"
 
-void SYS_INT_Initialize ( void )
-
-{
-    /* enable the multi vector */
-    PLIB_INT_MultiVectorSelect( INT_ID_0 );
-}
 
 /*******************************************************************************
  End of File
  */
 
+// TODO Add your interrupt handlers here
 
 
-
+/*TODO: System services initialization here*/
 

@@ -13,7 +13,7 @@ static uint32_t u32RAMReadAddress;
 static uint32_t u32SequenceStartAddress;
 static uint32_t u32SequenceEndAddress;
 static uint32_t u32EndofRAMRecordingAddress;
-static uint32_t u32EndOfCurrentFlashSectorAddress;
+static uint32_t u32StartOfCurrentFlashSectorAddress, u32EndOfCurrentFlashSectorAddress;
 static uint32_t u32RAMWriteAddress;
 static uint8_t u8RAMRetriggerFlag;
 static uint8_t u8FlashFileTableWriteFlag;//Does the file table need to be written?
@@ -1247,7 +1247,7 @@ void readFlash_DMA(memory_data_packet * mem_data){
                     if(u32FlashReadAddress <= u32SequenceStartAddress){
                         u32FlashReadAddress = u32SequenceEndAddress;
                     }
-                    else if(u32FlashReadAddress <= u32EndOfCurrentFlashSectorAddress){
+                    else if(u32FlashReadAddress <= u32StartOfCurrentFlashSectorAddress){
                         flashLocateNextSector(u8PlaybackDirection);
                     }
                 }
@@ -1273,7 +1273,7 @@ void readFlash_DMA(memory_data_packet * mem_data){
                         //Set end of the flash sequence to the beginning of the current sector.
                         u32EndOfCurrentFlashSectorAddress += FLASH_SECTOR_SIZE;
                     }
-                    else if(u32FlashReadAddress <= u32EndOfCurrentFlashSectorAddress){
+                    else if(u32FlashReadAddress <= u32StartOfCurrentFlashSectorAddress){
                         flashLocateNextSector(u8PlaybackDirection);
                     }
                 }
@@ -1298,7 +1298,7 @@ void readFlash_DMA(memory_data_packet * mem_data){
                         u32EndOfCurrentFlashSectorAddress = u32SequenceStartAddress - FLASH_SECTOR_SIZE;
                         setPlaybackRunStatus(FALSE);
                     }
-                    else if(u32FlashReadAddress <= u32EndOfCurrentFlashSectorAddress){
+                    else if(u32FlashReadAddress <= u32StartOfCurrentFlashSectorAddress){
                         flashLocateNextSector(u8PlaybackDirection);
                     }
                 }
@@ -1308,6 +1308,7 @@ void readFlash_DMA(memory_data_packet * mem_data){
         }
     }else{
         u32FlashReadAddress = u32SequenceStartAddress;
+        u32StartOfCurrentFlashSectorAddress = u32FlashReadAddress;
         u32EndOfCurrentFlashSectorAddress = u32FlashReadAddress + FLASH_SECTOR_SIZE;
         u8RAMRetriggerFlag = FALSE;
     }
@@ -1369,6 +1370,7 @@ void flashLocateNextSector(uint8_t u8PlaybackDirection){
             u8CurrentSector++;
         }
         u32FlashReadAddress = u8CurrentSector*FLASH_SECTOR_SIZE;
+        u32StartOfCurrentFlashSectorAddress = u32FlashReadAddress;
         u32EndOfCurrentFlashSectorAddress = u32FlashReadAddress + FLASH_SECTOR_SIZE;
         
     }else{
@@ -1377,8 +1379,9 @@ void flashLocateNextSector(uint8_t u8PlaybackDirection){
 
             u8CurrentSector--;
         }
-        u32EndOfCurrentFlashSectorAddress = u8CurrentSector*FLASH_SECTOR_SIZE;
+        u32StartOfCurrentFlashSectorAddress = u8CurrentSector*FLASH_SECTOR_SIZE;
         u32FlashReadAddress = u32EndOfCurrentFlashSectorAddress + FLASH_SECTOR_SIZE;
+        u32EndOfCurrentFlashSectorAddress = u32FlashReadAddress;
     }
 }
 
@@ -1529,7 +1532,6 @@ void setNewSequenceEndAddress(uint32_t u32NewSequenceEndAddress){
     uint32_t u32CalculatedFlashSequenceEndAddress;
     uint8_t u8CurrentSequence;
     uint8_t u8CurrentSector;
-    uint32_t u32FlashReadAddress;//The actual flash read address
     uint32_t u32FlashBytesAccumulated;//How many bytes of the sequence have been accounted for
     uint32_t u32SectorLength;//The length of the current sector.
 

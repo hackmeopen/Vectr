@@ -10,28 +10,21 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Test Load/Store with long sequences - push the limits
 //TODO Test hold modes
 //TODO Test clock and gate output
-//TODO Test Sequence Mode - switch press triggers change
-//TODO Test sequence playback over multiple sectors
 //TODO Test Mute Mode
-//TODO Test playback algorithms and implement menu change
+//TODO Test playback algorithms - final check.
 //TODO Test Effects
 //TODO Test slew rate menu adjustment
 //TODO Test the ranges
-//TODO Test to make sure the bytes being written to flash are the right length.
 //TODO Make sure the output can go to 0. Something with the I2C algorithm
-//TODO Test clock trigger outputs and gate reset output.
-//TODO Carry over playback changes to overdub.
 //TODO Test Ramp Output
-//TODO Test triggers to playback algorithms. flip and such
 //TODO Test Air Scratch - change speed and direction
-//TODO Dismiss a hold or live play activation during sequence mode - caused a general exception
+//TODO Dismiss a hold or live play activation during sequence mode - Test this - maybe more null checking?
 
-//TODO Implement track behavior - hold modes
 //TODO Include Bootloader
 
+//TODO Fix the length of files being saved to flash -4096 is not evenly divisible by 12
 //TODO Correct the slew rate bug for when no message is received in other mode besides live play
 //TODO After storing a patch, playback doesn't start again.
 //TODO Store settings after making a menu change - implement and test.
@@ -1004,7 +997,9 @@ void runPlaybackMode(void){
         }
         else if(u8LivePlayActivationFlag == TRUE){
             setSwitchLEDState(OFF);
-            VectrData.u8OperatingMode = LIVE_PLAY;
+            if(VectrData.u8OperatingMode != SEQUENCING){
+                VectrData.u8OperatingMode = LIVE_PLAY;
+            }
             u8LivePlayActivationFlag = FALSE;
         }
 
@@ -1640,6 +1635,9 @@ pos_and_gesture_data * p_hold_data_struct){
             }
             break;
         case PLAYBACK:
+        case SEQUENCING:
+        case AIR_SCRATCHING:
+        case MUTING:
             for(i=0; i<NUM_OF_AXES; i++){
                 u8HoldMode = VectrData.u8HoldBehavior[i];
                 if(u8PlaybackRunFlag == RUN){
@@ -1674,6 +1672,39 @@ pos_and_gesture_data * p_hold_data_struct){
                             break;
                     }
                 }
+            }
+            break;
+        case OVERDUBBING:
+            if(u8OverdubRunFlag == TRUE){
+                if(u8HoldMode != TRACKLIVE){
+                        *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
+                    }
+                    else{
+                        *(p_u16MemoryPosition + i) = *(p_u16Position + i);
+                    }
+            }
+            else{
+                switch(u8HoldMode){
+                        case HOLD:
+                            /*Do nothing. Play is stopped, new values will not be retrieved from RAM*/
+                            break;
+                        case TRACKLIVE:
+                        case LIVE:
+                            //Overwrite the memory data with the current live data.
+                            *(p_u16MemoryPosition + i) = *(p_u16Position + i);
+                            break;
+                        case ZERO:
+                            *(p_u16Position + i) = 0;
+                            break;
+                        case ENVELOPE_ZERO:
+                            /*If playback has ended, then 0V, otherwise, do nothing.*/
+                            if(u8PlaybackRunFlag == ENDED){
+                                *(p_u16Position + i) = 0;
+                            }
+                            break;
+                        default:
+                            break;
+                    }
             }
             break;
         default:
