@@ -28,12 +28,30 @@ enum{
 #define RAM_SEQUENTIAL_MODE_MASK    0x40
 
 #define RESET_RAM_ADDRESS   0
-#define HIGHEST_RAM_ADDRESS 0x1F400//1Mbit/8
+
 
 #define NUMBER_OF_DATA_ITEMS    6
 #define NUMBER_OF_DATA_BYTES    12 //X,Y,Z Position for two samples
-#define LENGTH_OF_RAM_ADDRESS   3 //BYTES
-#define LENGTH_OF_DMA_MESSAGE   16
+
+#ifdef RAM_SIZE_512K
+    #define LENGTH_OF_RAM_ADDRESS   2 //BYTES
+    #define LENGTH_OF_DMA_MESSAGE   15
+    #define HIGHEST_RAM_ADDRESS 0xFA00//1Mbit/8
+    #define FIRST_PACKET_START  3
+    #define FIRST_PACKET_END    9
+    #define SECOND_PACKET_START 9
+    #define SECOND_PACKET_END   14
+#else
+    #define LENGTH_OF_RAM_ADDRESS   3 //BYTES
+    #define LENGTH_OF_DMA_MESSAGE   16
+    #define HIGHEST_RAM_ADDRESS 0x1F400//1Mbit/8
+    #define FIRST_PACKET_START  4
+    #define FIRST_PACKET_END    10
+    #define SECOND_PACKET_START 10
+    #define SECOND_PACKET_END   15
+#endif
+
+
 #define LENGTH_OF_FLASH_READ_DMA_MESSAGE    16
 
 #define FLASH_SECTOR_UNASSIGNED   0xFF

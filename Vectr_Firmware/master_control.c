@@ -17,25 +17,21 @@
 //TODO Test Effects
 //TODO Test slew rate menu adjustment
 //TODO Test the ranges
-//TODO Make sure the output can go to 0. Something with the I2C algorithm
+//TODO Make sure the output can go to 0. Something with the I2C algorithm- maybe slew rate problem.
 //TODO Test Ramp Output
 //TODO Test Air Scratch - change speed and direction
 //TODO Dismiss a hold or live play activation during sequence mode - Test this - maybe more null checking?
+//TODO Test start-up behavior
+//TODO Make sure nothing bad happens when gestures are made at startup.
+//TODO Test memory at 20MHz SPI Bus
+//TODO  Test store settings after making a menu change
+//TODO Test jack detection with final sample
+//TODO Test with 512k RAM with final sample
 
 //TODO Include Bootloader
 
 //TODO Fix the length of files being saved to flash -4096 is not evenly divisible by 12
-//TODO Correct the slew rate bug for when no message is received in other mode besides live play
 //TODO After storing a patch, playback doesn't start again.
-//TODO Store settings after making a menu change - implement and test.
-//TODO Enable pin change interrupt for the modulation jack detect.
-
-//TODO Fix exit from performance mode to go back to playback or live play, whichever was active
-//TODO Fix the problem of touches being read after entering a performance mode.
-//TODO Change Menu Exit, Provide for backing out and exiting the menu
-//TODO Don't run the switch handler every time - check the queue before running it
-//TODO Don't run the menu handler every time - set up a message queue
-//TODO Change the current position data to an array and correct references - remove from Vectr Data array.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -50,9 +46,11 @@
 #define BOTTOM_TOUCH    MGC3130_TOUCH_BOTTOM
 #define CENTER_TOUCH    MGC3130_TOUCH_CENTER
 
-#define GESTURE_DEBOUNCE_TIMER_RESET    20
+#define GESTURE_DEBOUNCE_TIMER_RESET    25
+
 
 static VectrDataStruct VectrData;
+
 static uint8_t u8KeyPressFlag = FALSE;
 static uint8_t u8EncKeyPressFlag = FALSE;
 static uint8_t u8MenuModeFlag = FALSE;
@@ -271,6 +269,13 @@ void MasterControlStateMachine(void){
            case SYNC_IN_EVENT:
                u8SyncTrigger = event_message.u8message;
                break;
+           case JACK_DETECT_IN_EVENT:
+               if(event_message.u8message == 1){
+                   u16ModulationOnFlag = FALSE;
+               }
+               else{
+                   u16ModulationOnFlag = TRUE;
+               }
            default:
                break;
        }
@@ -2574,4 +2579,8 @@ void setGatePulseFlag(uint8_t u8NewState){
 
 void setResetFlag(uint8_t u8NewState){
     u8ResetFlag = u8NewState;
+}
+
+VectrDataStruct * getVectrDataStart(void){
+    return &VectrData;
 }

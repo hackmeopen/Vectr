@@ -60,6 +60,8 @@ void BSP_Initialize(void )
     PLIB_PORTS_PinDirectionInputSet(PORTS_ID_0, PLAY_IN_PORT, PLAY_IN_PIN);
     PLIB_PORTS_PinDirectionInputSet(PORTS_ID_0, SYNC_IN_PORT, SYNC_IN_PIN);
     PLIB_PORTS_PinDirectionInputSet(PORTS_ID_0, HOLD_PORT, HOLD_PIN);
+    PLIB_PORTS_PinDirectionInputSet(PORTS_ID_0, JACK_DETECT_PORT, JACK_DETECT_PIN);
+    PLIB_PORTS_ChangeNoticeInIdlePerPortEnable(PORTS_ID_0, JACK_DETECT_PORT);
     PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, LOOP_SYNC_PORT, LOOP_SYNC_PIN);
     PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, GATE_OUT_PORT, GATE_OUT_PIN);
     PLIB_PORTS_OpenDrainEnable(PORTS_ID_0, GATE_OUT_PORT, GATE_OUT_PIN);
@@ -81,6 +83,7 @@ void BSP_Initialize(void )
 
     CNCONDbits.ON = 1;
     PLIB_PORTS_PinChangeNoticePerPortEnable(PORTS_ID_0, HOLD_PORT, HOLD_PIN);
+    PLIB_PORTS_PinChangeNoticePerPortEnable(PORTS_ID_0, JACK_DETECT_PORT, JACK_DETECT_PIN);
 
     PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, SWITCH_LED_PORT_1, SWITCH_LED_PIN_1);
     PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, SWITCH_LED_PORT_2, SWITCH_LED_PIN_2);

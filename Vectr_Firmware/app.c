@@ -58,11 +58,7 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 #include "system_config.h"
 #include "master_control.h"
 
-static  uint8_t u8PlayInState,
-                u8RecordInState,
-                u8DirectionInState,
-                u8SyncInState,
-                u8HoldState;
+
 
 /*Semaphores*/
 
@@ -124,11 +120,6 @@ void __attribute__( (interrupt(ipl3), vector(43))) vDMA1InterruptWrapper( void )
 void __attribute__( (interrupt(ipl3), vector(44))) vDMA2InterruptWrapper( void );
 void __attribute__( (interrupt(ipl3), vector(45))) vDMA3InterruptWrapper( void );
 
-/*TO DO: Finish out the linearity.
-        Set up the menu system.
-        Store sequences in Flash.
-        Configure the bootloader.
- */
 
 // *****************************************************************************
 // *****************************************************************************
@@ -147,7 +138,6 @@ void __attribute__( (interrupt(ipl3), vector(45))) vDMA3InterruptWrapper( void )
 void APP_Initialize ( void )
 {
     MasterControlInit();
-
 
     /*Initialize the RTOS semaphores, tasks, and queues*/
     
@@ -255,6 +245,8 @@ void vTaskI2CMGC3130(void * pvParameters){
     pos_and_gesture_data pos_and_gesture_struct = {0,0,0,0};
     uint8_t u8Success;
 
+    
+
     /*Reset the MGC3130 and get the startup stuff out of the way.*/
     resetMGC3130();
     xSemaphoreTake(xSemaphoreMGC3130DataReady,portMAX_DELAY);
@@ -265,22 +257,14 @@ void vTaskI2CMGC3130(void * pvParameters){
     CLEAR_MGC3130_DATA_READY_INT;
     PLIB_INT_ExternalFallingEdgeSelect(INT_ID_0, INT_EXTERNAL_INT_SOURCE0);
     ENABLE_MGC3130_DATA_READY_INT;
-    
+
  //   readMGC3130FirmwareVersion();
-//    
+//
 //
 //    while(readStatusMessage())//Make sure the device is configured.
 //    {
 //        configureMGC3130(msgMGC3130Configure);
 //    }
-
-    /*Orientation Flip for the sensor.*/
-//    configureMGC3130(msgMGC3130InvertNorth);
-//    readStatusMessage();
-//    configureMGC3130(msgMGC3130InvertSouth);
-//    readStatusMessage();
-
-    
 
     for(;;){
 
@@ -298,6 +282,7 @@ void vTaskI2CMGC3130(void * pvParameters){
 
 void vTaskSPIDAC(void * pvParameters){
 
+
     xSemaphoreTake(xSemaphoreDMA_3_RX, 0);
 
     ENABLE_SPI_DACADC_DMA_TX_INT;
@@ -309,8 +294,6 @@ void vTaskSPIDAC(void * pvParameters){
 }
 
 void vTaskLEDs(void * pvParameters){
-    uint8_t u8LEDState = BLUE_GROUP1;
-    pos_and_gesture_data pos_and_gesture_struct;
 
     /*Clear*/
     clear_led_shift_registers();
@@ -319,12 +302,12 @@ void vTaskLEDs(void * pvParameters){
     
     setLEDAlternateFuncFlag(TRUE);
 
-    while(getPowerUpSequenceFlag()){
-        runPowerUpSequence();
+    while(runPowerUpSequence()){
         ledStateMachine();
     }
     setLEDAlternateFuncFlag(FALSE);
-    turnOffAllLEDs();
+
+  //  turnOffAllLEDs();
 
     for(;;){
         ledStateMachine();
@@ -344,11 +327,15 @@ void vTaskSPIMemory(void * pvParameters){
     ENABLE_SPI_MEM_DMA_TX_INT;
     ENABLE_SPI_MEM_DMA_RX_INT;
 
+    vTaskDelay(10*TICKS_PER_MS);
+
     readFlashFileTable();
 
     if(fileTableIsNotInitialized()){
         initializeFileTable();
     }
+
+   // LoadSettingsFromFileTable();
 
     for(;;){
 
@@ -689,6 +676,11 @@ void vTaskIOHandler(void* pvParameters){
             u8PortDLastState,
             u8PortELastState,
             u8PortFLastState;
+    static  uint8_t u8PlayInState,
+                u8RecordInState,
+                u8SyncInState,
+                u8HoldState,
+                u8ModJackDetectState;
     io_event_message event_message;
 
     event_message.u8message = RECORD_IN_EVENT;
@@ -747,12 +739,20 @@ void vTaskIOHandler(void* pvParameters){
             else{
                 u8PortDState = portChangeData.u8PortState;
 
-                //PORT D only has the HOLD pin on it
-                //Hold input freezes the input when high, normal running when low
-                u8HoldState = (u8PortDState & (1<<HOLD_PIN))>>HOLD_PIN;
-                event_message.u8message = HOLD_IN_EVENT;
-                event_message.u8messageType = u8HoldState;
-                xQueueSend(xIOEventQueue, &event_message, 0);
+                if((u8PortDLastState & (1<<HOLD_PIN)) != (u8PortDState & (1<<HOLD_PIN))){
+                    //Hold input freezes the input when high, normal running when low but the logic
+                    //here is inverted.
+                    u8HoldState = (u8PortDState & (1<<HOLD_PIN))>>HOLD_PIN;
+                    event_message.u8message = HOLD_IN_EVENT;
+                    event_message.u8messageType = u8HoldState;
+                    xQueueSend(xIOEventQueue, &event_message, 0);
+                }
+                else if((u8PortDLastState & (1<<JACK_DETECT_PIN)) != (u8PortDState & (1<<JACK_DETECT_PIN))){
+                    u8ModJackDetectState = (u8PortDState & (1<<JACK_DETECT_PIN))>>JACK_DETECT_PIN;
+                    event_message.u8message = JACK_DETECT_IN_EVENT;
+                    event_message.u8messageType = u8ModJackDetectState;
+                    xQueueSend(xIOEventQueue, &event_message, 0);
+                }
                 u8PortDLastState = u8PortDState;
             }
         }
