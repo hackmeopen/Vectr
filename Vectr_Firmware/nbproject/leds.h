@@ -113,8 +113,8 @@ void setRightLEDs(uint16_t u8LEDBrightness, uint8_t u8NewState);
 void setBottomLEDs(uint16_t u16LEDBrightness, uint8_t u8NewState);
 void setIndicateOverdubModeFlag(uint8_t u8NewSetting);
 void setSwitchLEDState(uint8_t u8NewState);
+uint8_t getPowerUpSequenceFlag(void);
 void LEDIndicateError(void);
-uint8_t runPowerUpSequence(void);
 
 
 #endif	/* LEDS_H */

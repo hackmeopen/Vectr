@@ -30,27 +30,6 @@ static uint8_t u8IndicateMuteModeFlag = FALSE;
 
 #define BLINK_TIMER_RESET   100
 
-const uint8_t led_ordered_array[NUM_OF_BLUE_LEDS] = {LED1,
- LED2   ,
- LED3   ,
- LED4   ,
- LED5   ,
- LED6    ,
- LED7   ,
- LED8    ,
- LED9   ,
- LED10    ,
- LED11   ,
- LED12    ,
- LED13    ,
- LED14   ,
- LED15   ,
- LED16    ,
- LED17   ,
- LED18   ,
- LED19   ,
- LED20   };
-
 /*This structure logs where the Blue LEDs are in space with an x,y coordinate*/
 const led_parameters led_parameter_array[NUM_OF_BLUE_LEDS] = {
 		//X LOCATION , Y LOCATION
@@ -401,28 +380,23 @@ void runIndicateSequencesMode(void){
 
 }
 
-uint8_t runPowerUpSequence(void){
+void runPowerUpSequence(void){
     static uint8_t u8PowerUpState = RAMP_UP;
     static uint8_t u8PowerUpTimer = POWER_UP_TIMER_RESET;
-    static uint8_t u8BlueLEDCount = 0;
 
-    if(u8PowerUpTimer >0){
-        u8PowerUpTimer--;
-    }
-
-    if(u8PowerUpState == RAMP_UP){
-        if(u16_red_LED_duty_cycle++ == MAX_BRIGHTNESS){
-            u8PowerUpState = RAMP_DOWN;
+//    if(u8PowerUpTimer-- == 0){
+//        u8PowerUpTimer = POWER_UP_TIMER_RESET;
+        //Ramp red up and then down and make the blue go around.
+        if(u8PowerUpState == RAMP_UP){
+            if(u16_red_LED_duty_cycle++ == MAX_BRIGHTNESS){
+                u8PowerUpState = RAMP_DOWN;
+            }
+        }else{
+            if(u16_red_LED_duty_cycle-- == 0){
+                u8PowerUpSequenceFlag = FALSE;
+            }
         }
-    }else{
-        setBlueLEDBrightness(led_ordered_array[u8BlueLEDCount], MAX_BRIGHTNESS);
-        u8BlueLEDCount++;
-        if(u8BlueLEDCount == NUM_OF_BLUE_LEDS){
-            return 0;
-        }
-    }
-
-    return 1;
+   // }
 }
 
 /*Indicate that the system encountered an error condition.*/

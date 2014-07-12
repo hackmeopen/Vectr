@@ -27,12 +27,14 @@ static uint8_t u8FlashWriteEnabledFlag = FALSE;
 static uint8_t u8SPI_MEM_TX_Buffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static uint8_t u8SPI_MEM_RX_Buffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
+
 typedef struct{
     uint8_t u8SPIMessage[4];
     uint8_t u8LoadStoreBuffer[FLASH_SECTOR_SIZE];
 }LoadStoreBufferStruct;
 
 LoadStoreBufferStruct LoadStoreBuffer;
+
 
 //Local copy of the file table and the settings table.
 //They have to be written back when something changes.
@@ -140,24 +142,13 @@ void setDMAState(uint8_t u8NewDMAState){
             break;
 
         case DMA_RAM_FULL_SECTOR:
-            
-#ifdef RAM_SIZE_512K
-            PLIB_DMA_ChannelXDisable(DMA_ID_0,SPI_MEM_TX_DMA_CHANNEL);
-            PLIB_DMA_ChannelXSourceStartAddressSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, (uint32_t) (&LoadStoreBuffer.u8SPIMessage[1]));
-            PLIB_DMA_ChannelXSourceSizeSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, sizeof(LoadStoreBuffer) - 1);
-
-            PLIB_DMA_ChannelXDisable(DMA_ID_0,SPI_MEM_RX_DMA_CHANNEL);
-            PLIB_DMA_ChannelXDestinationStartAddressSet(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL, (uint32_t) (&LoadStoreBuffer.u8SPIMessage[1]));
-            PLIB_DMA_ChannelXDestinationSizeSet(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL, sizeof(LoadStoreBuffer) - 1);
-#else
             PLIB_DMA_ChannelXDisable(DMA_ID_0,SPI_MEM_TX_DMA_CHANNEL);
             PLIB_DMA_ChannelXSourceStartAddressSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, (uint32_t) (&LoadStoreBuffer.u8SPIMessage[0]));
-            PLIB_DMA_ChannelXSourceSizeSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, sizeof(LoadStoreBuffer));
+            PLIB_DMA_ChannelXSourceSizeSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, FLASH_SECTOR_SIZE);
 
             PLIB_DMA_ChannelXDisable(DMA_ID_0,SPI_MEM_RX_DMA_CHANNEL);
             PLIB_DMA_ChannelXDestinationStartAddressSet(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL, (uint32_t) (&LoadStoreBuffer.u8SPIMessage[0]));
-            PLIB_DMA_ChannelXDestinationSizeSet(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL, sizeof(LoadStoreBuffer));
-#endif
+            PLIB_DMA_ChannelXDestinationSizeSet(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL, FLASH_SECTOR_SIZE);
             break;
             
         case DMA_FLASH_WRITE_ENABLE:
@@ -481,16 +472,10 @@ void ramWriteSector(uint32_t u32Address){
     setDMAState(DMA_RAM_FULL_SECTOR);
 
     CLEAR_RAM_SPI_EN;
-#ifdef RAM_SIZE_512K
-    LoadStoreBuffer.u8SPIMessage[1] = RAM_WRITE_COMMAND;
-    LoadStoreBuffer.u8SPIMessage[2] = u32Address>>8;
-    LoadStoreBuffer.u8SPIMessage[3] = u32Address;
-#else
     LoadStoreBuffer.u8SPIMessage[0] = RAM_WRITE_COMMAND;
     LoadStoreBuffer.u8SPIMessage[1] = u32Address>>16;
     LoadStoreBuffer.u8SPIMessage[2] = u32Address>>8;
     LoadStoreBuffer.u8SPIMessage[3] = u32Address;
-#endif
 
     PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL);
     PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL);
@@ -913,16 +898,10 @@ void writeRAM(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
     clearSPIBuffer();//Clear out the read buffer.
 
     CLEAR_RAM_SPI_EN;
-#ifdef RAM_SIZE_512K
-    PLIB_SPI_BufferWrite(SPI_MEM, RAM_WRITE_COMMAND);
-    PLIB_SPI_BufferWrite(SPI_MEM, u32RAMWriteAddress>>8);
-    PLIB_SPI_BufferWrite(SPI_MEM, u32RAMWriteAddress);
-#else
     PLIB_SPI_BufferWrite(SPI_MEM, RAM_WRITE_COMMAND);
     PLIB_SPI_BufferWrite(SPI_MEM, u32RAMWriteAddress>>16);
     PLIB_SPI_BufferWrite(SPI_MEM, u32RAMWriteAddress>>8);
     PLIB_SPI_BufferWrite(SPI_MEM, u32RAMWriteAddress);
-#endif
 
     for(i=0; i<3; i++){
         PLIB_SPI_BufferWrite(SPI_MEM, *p_u8DataByte>>8);
@@ -971,18 +950,12 @@ void writeRAM_DMA(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
     /*Set up to write. This procedure writes two samples worth of data.*/
 
     CLEAR_RAM_SPI_EN;
-#ifdef RAM_SIZE_512K
-    u8SPI_MEM_TX_Buffer[0] = RAM_WRITE_COMMAND;
-    u8SPI_MEM_TX_Buffer[1] = u32RAMWriteAddress>>8;
-    u8SPI_MEM_TX_Buffer[2] = u32RAMWriteAddress;
-#else
     u8SPI_MEM_TX_Buffer[0] = RAM_WRITE_COMMAND;
     u8SPI_MEM_TX_Buffer[1] = u32RAMWriteAddress>>16;
     u8SPI_MEM_TX_Buffer[2] = u32RAMWriteAddress>>8;
     u8SPI_MEM_TX_Buffer[3] = u32RAMWriteAddress;
-#endif
 
-    for(i=FIRST_PACKET_START; i<FIRST_PACKET_END; i++){
+    for(i=4; i<10; i++){
         u8SPI_MEM_TX_Buffer[i] =  *p_u8DataByte>>8;
         i++;
         u8SPI_MEM_TX_Buffer[i] = *p_u8DataByte;
@@ -990,7 +963,7 @@ void writeRAM_DMA(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
     }
 
     p_u8DataByte = &(mem_data->sample_2.u16XPosition);
-    for(i=SECOND_PACKET_START; i<SECOND_PACKET_END; i++){
+    for(i=10; i<15; i++){
         u8SPI_MEM_TX_Buffer[i] =  *p_u8DataByte>>8;
         i++;
         u8SPI_MEM_TX_Buffer[i] = *p_u8DataByte;
@@ -1047,16 +1020,10 @@ void readRAM_DMA(memory_data_packet * mem_data){
     setDMAState(DMA_RAM);
 
     CLEAR_RAM_SPI_EN;
-#ifdef RAM_SIZE_512K
-    u8SPI_MEM_TX_Buffer[0] = RAM_READ_COMMAND;
-    u8SPI_MEM_TX_Buffer[1] = u32RAMReadAddress>>8;
-    u8SPI_MEM_TX_Buffer[2] = u32RAMReadAddress;
-#else
     u8SPI_MEM_TX_Buffer[0] = RAM_READ_COMMAND;
     u8SPI_MEM_TX_Buffer[1] = u32RAMReadAddress>>16;
     u8SPI_MEM_TX_Buffer[2] = u32RAMReadAddress>>8;
     u8SPI_MEM_TX_Buffer[3] = u32RAMReadAddress;
-#endif
 
     PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL);
     PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL);
@@ -1084,7 +1051,7 @@ void readRAM_DMA(memory_data_packet * mem_data){
     }
         
     //Now load in the data.
-    for(i=FIRST_PACKET_START; i<FIRST_PACKET_END; i++){
+    for(i=4; i<10; i++){
         u16Data = u8SPI_MEM_RX_Buffer[i]<<8;
         i++;
         u16Data += u8SPI_MEM_RX_Buffer[i];
@@ -1100,7 +1067,7 @@ void readRAM_DMA(memory_data_packet * mem_data){
     }
        
 
-    for(i=SECOND_PACKET_START; i<SECOND_PACKET_END; i++){
+    for(i=10; i<15; i++){
         u16Data = u8SPI_MEM_RX_Buffer[i]<<8;
         i++;
         u16Data += u8SPI_MEM_RX_Buffer[i];
@@ -1363,16 +1330,10 @@ void readRAMSector(uint8_t * u8Buffer, uint32_t u32StartReadAddress){
     setDMAState(DMA_RAM_FULL_SECTOR);
 
     CLEAR_RAM_SPI_EN;
-#ifdef RAM_SIZE_512K
-    u8Buffer[1] = RAM_READ_COMMAND;
-    u8Buffer[2] = u32StartReadAddress>>8;
-    u8Buffer[3] = u32StartReadAddress;
-#else
     u8Buffer[0] = RAM_READ_COMMAND;
     u8Buffer[1] = u32StartReadAddress>>16;
     u8Buffer[2] = u32StartReadAddress>>8;
     u8Buffer[3] = u32StartReadAddress;
-#endif
 
     PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL);
     PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL);
@@ -1607,22 +1568,5 @@ void setNewSequenceEndAddress(uint32_t u32NewSequenceEndAddress){
         }
 
         u32SequenceEndAddress = u32CalculatedFlashSequenceEndAddress;
-    }
-}
-
-void LoadSettingsFromFileTable(void){
-    VectrDataStruct * VectrData;
-    uint8_t * p_u8FileTableData;
-    uint8_t * p_u8VectrData;
-    int i;
-
-    VectrData = getVectrDataStart();
-    p_u8VectrData = (uint8_t *) VectrData;
-    p_u8FileTableData = (uint8_t*)ftFileTable.vdsSettingsTable;
-
-    for(i=0; i<sizeof(VectrDataStruct);i++){
-        *p_u8VectrData = *p_u8FileTableData;
-        p_u8VectrData++;
-        p_u8FileTableData++;
     }
 }

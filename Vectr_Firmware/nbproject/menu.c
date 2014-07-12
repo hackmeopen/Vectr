@@ -24,7 +24,6 @@ static uint8_t u8LoadStoreParameter = 0;
 static uint8_t u8EffectModeFlag = FALSE;
 static uint8_t u8ClockModeFlag = FALSE;
 static int16_t i16EncoderLiveZeroPosition = 0;
-static uint8_t u8MenuEntryParameter = 0;//Stored so that it can be recalled if no change is desired
 static uint8_t u8LoadStoreActivePositions[MAX_NUM_OF_LOAD_STORE_LOCATIONS] = 
 {FALSE,
 FALSE,
@@ -95,11 +94,7 @@ void determineLoadStorePositions(void);
 uint8_t initializeLoadStoreMode(void);
 void resetEncoderLiveInteraction(void);
 void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value);
-void resetMenuParameter(void);
-void resetClockParameter(void);
-void resetRecParameter(uint8_t u8RecPlayOdub);
-void resetEffectParameter(void);
-void resetXYZParameter(uint8_t u8Mode);
+
 
 uint16_t getEncState(void){
     return u16encState;
@@ -121,8 +116,7 @@ void menuHandlerInit(void){
 }
 
 void MenuStateMachine(void){
-    uint8_t u8ExitWithoutSavingFlag = TRUE;
-
+    
     //Check to see if the encoder moved
     if(i8MenuChangeFlag != 0 && i8SubMenuState == SUBMENU_NOT_SELECTED){
         changeMainMenuState();
@@ -142,16 +136,11 @@ void MenuStateMachine(void){
                     setLEDState(u8LEDMainMenuMapping[i8MainMenuState], ON);
                     setLEDState(u8XYZSubMenuMapping[i8SubMenuState-1], BLINK);
                 }
-                else if(u8ParameterEditModeFlag == FALSE){
+                else{
                     //Enter the submenu and modify the parameter
                     u8ParameterEditModeFlag = TRUE;
                     setLEDState(u8XYZSubMenuMapping[i8SubMenuState-1], ON);
                     initializeXYZParameterMode();
-                }
-                else{
-                    //Lock in the selection and exit the menu.
-                    u8ExitWithoutSavingFlag = FALSE;
-                    u8MenuExitFlag = TRUE;
                 }
             }
 
@@ -179,16 +168,11 @@ void MenuStateMachine(void){
                     setLEDState(u8LEDMainMenuMapping[i8MainMenuState], ON);
                     setLEDState(u8PlaySubMenuMapping[i8SubMenuState-1], BLINK);
                 }
-                else if(u8ParameterEditModeFlag == FALSE){
+                else{
                     //Enter the submenu and modify the parameter
                     u8ParameterEditModeFlag = TRUE;
                     setLEDState(u8PlaySubMenuMapping[i8SubMenuState-1], ON);
                     initializeRecParameterMode(i8MainMenuState-RECORD_MENU);
-                }
-                else{
-                    //Locking in the change and exiting the menu.
-                    u8ExitWithoutSavingFlag = FALSE;
-                    u8MenuExitFlag = TRUE;
                 }
             }
 
@@ -268,9 +252,6 @@ void MenuStateMachine(void){
                 else{
                     //Set the effect mode
                     u8EffectModeFlag = FALSE;
-                    //Locking in the change and exiting the menu.
-                    u8ExitWithoutSavingFlag = FALSE;
-                    u8MenuExitFlag = TRUE;
                 }
 
             }
@@ -298,9 +279,6 @@ void MenuStateMachine(void){
                 else{
                     //Set the effect mode
                     u8ClockModeFlag = FALSE;
-                    //Locking in the change and exiting the menu.
-                    u8ExitWithoutSavingFlag = FALSE;
-                    u8MenuExitFlag = TRUE;
                 }
 
             }
@@ -324,15 +302,6 @@ void MenuStateMachine(void){
      we could end up in a weird state.*/
 
     if(u8MenuExitFlag == TRUE){
-        /*If the main switch is pressed, then we exit without saving the change and
-         need to reset the parameter.*/
-        if(u8ExitWithoutSavingFlag == TRUE){
-            resetMenuParameter();
-        }
-        else{
-            //Write the file table.
-            setFileTableWriteFlag();
-        }
         resetEncoderLiveInteraction();//Encoder turning needs to be reset to not get spurious changes.
         i8SubMenuState = SUBMENU_NOT_SELECTED;
         u8MenuExitFlag = FALSE;
@@ -473,29 +442,9 @@ void setMenuKeyPressFlag(void){
     u8MenuKeyPressFlag = TRUE;
 }
 
-void resetMenuParameter(void){
-    switch(i8MainMenuState){
-        case X_MENU:
-        case Y_MENU:
-        case Z_MENU:
-            resetXYZParameter(i8SubMenuState);
-            break;
-        case RECORD_MENU:
-        case OVERDUB_MENU:
-        case PLAYBACK_MENU:
-            resetRecParameter(i8MainMenuState-RECORD_MENU);
-            break;
-        case EFFECT_MENU:
-            resetEffectParameter();
-            break;
-        case CLOCK_MENU:
-            resetClockParameter();
-            break;
-        default:
-            break;
-    }
-}
+void setMenuLEDState(void){
 
+}
 
 uint8_t initializeLoadStoreMode(void){
     setLEDState(u8LEDMainMenuMapping[i8MainMenuState], ON);
@@ -614,8 +563,6 @@ void initializeRecParameterMode(uint8_t u8RecPlayOdub){
             setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
             break;
     }
-
-    u8MenuEntryParameter = u8CurrentParameter;
 }
 
 void editRecParameter(uint8_t u8RecPlayOdub){
@@ -677,20 +624,6 @@ void editRecParameter(uint8_t u8RecPlayOdub){
     i8MenuChangeFlag = 0;
 }
 
-void resetRecParameter(uint8_t u8RecPlayOdub){
-    switch(i8SubMenuState){
-        case SOURCE:
-            setCurrentSource(u8RecPlayOdub, u8MenuEntryParameter);
-            break;
-        case CONTROL:
-            setCurrentControl(u8RecPlayOdub, u8MenuEntryParameter);
-            break;
-        case LOOP:
-            setCurrentLoopMode(u8MenuEntryParameter);
-            break;
-    }
-}
-
 void changeRecSubMenuState(void){
     setLEDState(u8PlaySubMenuMapping[i8SubMenuState-1], OFF);
 
@@ -727,7 +660,6 @@ void initializeClockMode(void){
 
     u8CurrentParameter = getCurrentClockMode();
     setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
-    u8MenuEntryParameter = u8CurrentParameter;
 }
 
 void editClockParameter(void){
@@ -751,16 +683,11 @@ void editClockParameter(void){
     i8MenuChangeFlag = 0;
 }
 
-void resetClockParameter(void){
-    setCurrentClockMode(u8MenuEntryParameter);
-}
-
 void initializeEffectMode(void){
     uint8_t u8CurrentParameter;
 
     u8CurrentParameter = getCurrentModulationMode();
     setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
-    u8MenuEntryParameter = u8CurrentParameter;
 }
 
 void editEffectParameter(void){
@@ -785,41 +712,36 @@ void editEffectParameter(void){
     i8MenuChangeFlag = 0;
 }
 
-void resetEffectParameter(void){
-    setCurrentModulationMode(u8MenuEntryParameter);
-}
-
 void initializeXYZParameterMode(void){
-    uint8_t u8CurrentParameter;
+    uint16_t u16CurrentParameter;
 
     switch(i8SubMenuState){
         case RANGE:
-            u8CurrentParameter = getCurrentRange(i8MainMenuState);
-            setLEDState(u8StandardSubMenuMapping[u8CurrentParameter], ON);
+            u16CurrentParameter = getCurrentRange(i8MainMenuState);
+            setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], ON);
             break;
         case LINEARITY:
-            u8CurrentParameter = getCurrentLinearity(i8MainMenuState);
-            indicateLEDContinuousXYZParameter(i8SubMenuState, u8CurrentParameter);
+            u16CurrentParameter = getCurrentLinearity(i8MainMenuState);
+            indicateLEDContinuousXYZParameter(i8SubMenuState, u16CurrentParameter);
             break;
         case QUANTIZATION:
-            u8CurrentParameter = getCurrentQuantization(i8MainMenuState);
-            setLEDState(u8StandardSubMenuMapping[u8CurrentParameter], ON);
+            u16CurrentParameter = getCurrentQuantization(i8MainMenuState);
+            setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], ON);
             break;
         case SLEW_RATE:
-            u8CurrentParameter = getCurrentSlewRate(i8MainMenuState);
-            indicateLEDContinuousXYZParameter(i8SubMenuState, u8CurrentParameter);
+            u16CurrentParameter = getCurrentSlewRate(i8MainMenuState);
+            indicateLEDContinuousXYZParameter(i8SubMenuState, u16CurrentParameter);
             break;
         case TRACK_BEHAVIOR:
-            u8CurrentParameter = getCurrentTrackBehavior(i8MainMenuState);
-            setLEDState(u8StandardSubMenuMapping[u8CurrentParameter], ON);
+            u16CurrentParameter = getCurrentTrackBehavior(i8MainMenuState);
+            setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], ON);
             break;
         default:
             break;
     }
-    u8MenuEntryParameter = u8CurrentParameter;
 }
 
-void editXYZParameter(uint8_t u8Mode){
+void editXYZParameter(uint8_t u8Parameter){
     int8_t i8IncDecFlag;
     uint16_t u16CurrentParameter;
 
@@ -829,7 +751,7 @@ void editXYZParameter(uint8_t u8Mode){
         i8IncDecFlag = 1;;
     }
 
-    switch(u8Mode){
+    switch(u8Parameter){
         case RANGE:
             u16CurrentParameter = getCurrentRange(i8MainMenuState);
             setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], OFF);
@@ -856,7 +778,7 @@ void editXYZParameter(uint8_t u8Mode){
                     u16CurrentParameter = 0;
                 }
             }
-            indicateLEDContinuousXYZParameter(u8Mode, u16CurrentParameter);
+            indicateLEDContinuousXYZParameter(u8Parameter, u16CurrentParameter);
             setCurrentLinearity(i8MainMenuState, u16CurrentParameter);
             break;
         case QUANTIZATION:
@@ -887,7 +809,7 @@ void editXYZParameter(uint8_t u8Mode){
                     u16CurrentParameter = 0;
                 }
             }
-            indicateLEDContinuousXYZParameter(u8Mode, u16CurrentParameter);
+            indicateLEDContinuousXYZParameter(u8Parameter, u16CurrentParameter);
             setCurrentSlewRate(i8MainMenuState, u16CurrentParameter);
             break;
         case TRACK_BEHAVIOR:
@@ -912,28 +834,6 @@ void editXYZParameter(uint8_t u8Mode){
     i8MenuChangeFlag = 0;
 }
 
-void resetXYZParameter(uint8_t u8subMenu){
-
-    switch(u8subMenu){
-        case RANGE:
-            setCurrentRange(i8MainMenuState, u8MenuEntryParameter);
-            break;
-        case LINEARITY:
-            setCurrentLinearity(i8MainMenuState, u8MenuEntryParameter);
-            break;
-        case QUANTIZATION:
-            setCurrentQuantization(i8MainMenuState, u8MenuEntryParameter);
-            break;
-        case SLEW_RATE:
-            setCurrentSlewRate(i8MainMenuState, u8MenuEntryParameter);
-            break;
-        case TRACK_BEHAVIOR:
-            setCurrentTrackBehavior(i8MainMenuState, u8MenuEntryParameter);
-            break;
-        default:
-            break;
-    }
-}
 /*This function responds to encoder turning for the XYZ submenu.*/
 void changeXYZSubMenuState(void){
     setLEDState(u8XYZSubMenuMapping[i8SubMenuState-1], OFF);

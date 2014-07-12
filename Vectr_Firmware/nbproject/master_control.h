@@ -8,6 +8,53 @@
 #ifndef MASTER_CONTROL_H
 #define	MASTER_CONTROL_H
 
+void MasterControlInit(void);
+void setKeyPressFlag(void);
+void setEncKeyPressFlag(void);
+uint16_t getCurrentRange(uint8_t u8Index);
+void setCurrentRange(uint8_t u8Index, uint8_t u8NewValue);
+void setMenuModeFlag(uint8_t u8NewMode);
+uint8_t getCurrentSource(uint8_t u8Index);
+uint8_t setCurrentSource(uint8_t u8Index, uint8_t u8NewValue);
+uint8_t getCurrentControl(uint8_t u8Index);
+uint8_t setCurrentControl(uint8_t u8Index, uint8_t u8NewValue);
+uint8_t getCurrentLoopMode(void);
+void setCurrentLoopMode(uint8_t u8NewSetting);
+uint8_t getCurrentClockMode(void);
+void setCurrentClockMode(uint8_t u8NewSetting);
+uint8_t getCurrentModulationMode(void);
+void setCurrentModulationMode(uint8_t u8NewSetting);
+uint8_t getOverdubStatus(uint8_t u8Axis);
+void setLivePlayActivationFlag(void);
+uint8_t getHoldState(void);
+uint8_t getPlaybackDirection(void);
+void setPlaybackDirection(uint8_t u8NewDirection);
+uint8_t getPlaybackMode(void);
+void setHandPresentFlag(uint8_t u8NewState);
+void setPulseTimerExpiredFlag(void);
+uint8_t getCurrentQuantization(uint8_t u8Index);
+void setCurrentQuantization(uint8_t u8Index, uint16_t u16CurrentParameter);
+uint8_t * getDataStructAddress(void);
+uint8_t getSequenceRecordedFlag(void);
+uint8_t getPlaybackRunStatus(void);
+void setPlaybackRunStatus(uint8_t u8NewState);
+uint8_t getSequenceModeState(uint8_t u8SequenceIndex);
+void enterOverdubMode(void);
+void enterAirScratchMode(void);
+void enterMuteMode(void);
+void enterSequencerMode(void);
+uint8_t getMuteStatus(uint8_t u8Index);
+uint8_t getCurrentSequenceIndex(void);
+uint16_t getCurrentLinearity(uint8_t u8Index);
+void setCurrentLinearity(uint8_t u8Index, uint8_t u8NewValue);
+uint16_t getCurrentSlewRate(uint8_t u8Index);
+void setCurrentSlewRate(uint8_t u8Index, uint8_t u8NewValue);
+uint8_t getCurrentTrackBehavior(uint8_t u8Index);
+void setCurrentTrackBehavior(uint8_t u8Index, uint8_t u8NewValue);
+uint32_t getNextClockPulseIndex(void);
+uint8_t getGatePulseFlag(void);
+void setGatePulseFlag(uint8_t u8NewState);
+
 enum{
     ENC_SWITCH_PRESSED = 0,
     ENC_SWITCH_RELEASED,
@@ -76,8 +123,7 @@ enum{
     RECORD_IN_EVENT = 0,
     PLAYBACK_IN_EVENT,
     HOLD_IN_EVENT,
-    SYNC_IN_EVENT,
-    JACK_DETECT_IN_EVENT
+    SYNC_IN_EVENT
 };
 
 enum{
@@ -211,7 +257,28 @@ enum{
 #define LINEARITY_LED_SCALING   16 //MAX BRIGHTNESS divided by the size of
 /*Record, Playback, and Overdub all have */
 
-
+typedef struct{
+    uint8_t u8Range[NUMBER_OF_OUTPUTS];//Keep this as the first entry...things could get messed up.
+    uint16_t u16CurrentXPosition;
+    uint16_t u16CurrentYPosition;
+    uint16_t u16CurrentZPosition;
+    uint16_t u16SlewRate[NUMBER_OF_OUTPUTS];
+    uint16_t u16Linearity[NUMBER_OF_OUTPUTS];
+    uint8_t u8OperatingMode;//live play, local recording, externally triggered recording
+    uint8_t u8Source[NUM_OF_PLAYBACK_SETTINGS];
+    uint8_t u8Control[NUM_OF_PLAYBACK_SETTINGS];
+    uint8_t u8PlaybackMode;//Looping or whatnot
+    uint8_t u8PlaybackDirection;//forward or reverse
+    uint8_t u8ModulationMode;//Speed or Scrub
+    int16_t i16ModulationDepth;//Depth of the effect
+    uint8_t u8HoldBehavior[NUMBER_OF_OUTPUTS];//Hold the outputs
+    uint8_t u8OverdubStatus[NUMBER_OF_OUTPUTS];
+    uint8_t u8AirScratch;
+    uint8_t u16Quantization[NUMBER_OF_OUTPUTS];
+    uint8_t u8MuteState[NUMBER_OF_OUTPUTS];
+    uint8_t u8ClockMode;
+    uint8_t u8GateMode;
+}VectrDataStruct;
 
 
 
@@ -244,80 +311,6 @@ enum{
     SEQUENCER_MODE,
     AIR_SCRATCH_MODE
 };
-
-
-typedef struct{
-    uint8_t u8Range[NUMBER_OF_OUTPUTS];//Keep this as the first entry...things could get messed up.
-    uint16_t u16CurrentXPosition;
-    uint16_t u16CurrentYPosition;
-    uint16_t u16CurrentZPosition;
-    uint16_t u16SlewRate[NUMBER_OF_OUTPUTS];
-    uint16_t u16Linearity[NUMBER_OF_OUTPUTS];
-    uint8_t u8OperatingMode;//live play, local recording, externally triggered recording
-    uint8_t u8Source[NUM_OF_PLAYBACK_SETTINGS];
-    uint8_t u8Control[NUM_OF_PLAYBACK_SETTINGS];
-    uint8_t u8PlaybackMode;//Looping or whatnot
-    uint8_t u8PlaybackDirection;//forward or reverse
-    uint8_t u8ModulationMode;//Speed or Scrub
-    int16_t i16ModulationDepth;//Depth of the effect
-    uint8_t u8HoldBehavior[NUMBER_OF_OUTPUTS];//Hold the outputs
-    uint8_t u8OverdubStatus[NUMBER_OF_OUTPUTS];
-    uint8_t u8AirScratch;
-    uint8_t u16Quantization[NUMBER_OF_OUTPUTS];
-    uint8_t u8MuteState[NUMBER_OF_OUTPUTS];
-    uint8_t u8ClockMode;
-    uint8_t u8GateMode;
-}VectrDataStruct;
-
-void MasterControlInit(void);
-void setKeyPressFlag(void);
-void setEncKeyPressFlag(void);
-uint16_t getCurrentRange(uint8_t u8Index);
-void setCurrentRange(uint8_t u8Index, uint8_t u8NewValue);
-void setMenuModeFlag(uint8_t u8NewMode);
-uint8_t getCurrentSource(uint8_t u8Index);
-uint8_t setCurrentSource(uint8_t u8Index, uint8_t u8NewValue);
-uint8_t getCurrentControl(uint8_t u8Index);
-uint8_t setCurrentControl(uint8_t u8Index, uint8_t u8NewValue);
-uint8_t getCurrentLoopMode(void);
-void setCurrentLoopMode(uint8_t u8NewSetting);
-uint8_t getCurrentClockMode(void);
-void setCurrentClockMode(uint8_t u8NewSetting);
-uint8_t getCurrentModulationMode(void);
-void setCurrentModulationMode(uint8_t u8NewSetting);
-uint8_t getOverdubStatus(uint8_t u8Axis);
-void setLivePlayActivationFlag(void);
-uint8_t getHoldState(void);
-uint8_t getPlaybackDirection(void);
-void setPlaybackDirection(uint8_t u8NewDirection);
-uint8_t getPlaybackMode(void);
-void setHandPresentFlag(uint8_t u8NewState);
-void setPulseTimerExpiredFlag(void);
-uint8_t getCurrentQuantization(uint8_t u8Index);
-void setCurrentQuantization(uint8_t u8Index, uint16_t u16CurrentParameter);
-uint8_t * getDataStructAddress(void);
-uint8_t getSequenceRecordedFlag(void);
-uint8_t getPlaybackRunStatus(void);
-void setPlaybackRunStatus(uint8_t u8NewState);
-uint8_t getSequenceModeState(uint8_t u8SequenceIndex);
-void enterOverdubMode(void);
-void enterAirScratchMode(void);
-void enterMuteMode(void);
-void enterSequencerMode(void);
-uint8_t getMuteStatus(uint8_t u8Index);
-uint8_t getCurrentSequenceIndex(void);
-uint16_t getCurrentLinearity(uint8_t u8Index);
-void setCurrentLinearity(uint8_t u8Index, uint8_t u8NewValue);
-uint16_t getCurrentSlewRate(uint8_t u8Index);
-void setCurrentSlewRate(uint8_t u8Index, uint8_t u8NewValue);
-uint8_t getCurrentTrackBehavior(uint8_t u8Index);
-void setCurrentTrackBehavior(uint8_t u8Index, uint8_t u8NewValue);
-uint32_t getNextClockPulseIndex(void);
-uint8_t getGatePulseFlag(void);
-void setGatePulseFlag(uint8_t u8NewState);
-VectrDataStruct * getVectrDataStart(void);
-
-
 
 
 
