@@ -302,6 +302,7 @@ void vTaskLEDs(void * pvParameters){
     while(runPowerUpSequence()){
         ledStateMachine();
     }
+
     setLEDAlternateFuncFlag(FALSE);
 
     for(;;){

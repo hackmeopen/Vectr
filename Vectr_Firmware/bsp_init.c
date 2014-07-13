@@ -7,6 +7,11 @@ void BSP_Initialize(void )
     ANSELB = 0;
     ANSELE = 0;
     ANSELF = 0;
+    
+    PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, SHIFT_REG_DATA_PORT, SHIFT_REG_DATA_PIN);
+    PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, SHIFT_REG_CLK_PORT, SHIFT_REG_CLK_PIN);
+
+    clear_led_shift_registers();
 
     /*Configure the MGC3130 Reset Pin - Active Low*/
     PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, MGC3130_RESET_PORT, MGC3130_RESET_PIN);
@@ -90,8 +95,7 @@ void BSP_Initialize(void )
     SET_SWITCH_LED_GREEN;
 
     /*Configure LED stuff*/
-    PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, SHIFT_REG_DATA_PORT, SHIFT_REG_DATA_PIN);
-    PLIB_PORTS_PinDirectionOutputSet(PORTS_ID_0, SHIFT_REG_CLK_PORT, SHIFT_REG_CLK_PIN);
+    
     PLIB_PORTS_RemapOutput(PORTS_ID_0, OTPUT_FUNC_OC1, LED_PWM_1_REMAP_PORT);
     PLIB_PORTS_RemapOutput(PORTS_ID_0, OTPUT_FUNC_OC2, LED_PWM_2_REMAP_PORT);
     PLIB_PORTS_RemapOutput(PORTS_ID_0, OTPUT_FUNC_OC3, LED_PWM_3_REMAP_PORT);

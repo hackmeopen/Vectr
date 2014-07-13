@@ -28,7 +28,7 @@ static uint8_t u8PowerUpSequenceFlag = TRUE;
 static uint8_t u8IndicateErrorFlag = FALSE;
 static uint8_t u8IndicateMuteModeFlag = FALSE;
 
-#define BLINK_TIMER_RESET   100
+#define BLINK_TIMER_RESET   200
 
 const uint8_t led_ordered_array[NUM_OF_BLUE_LEDS] = {LED1,
  LED2   ,
@@ -109,12 +109,13 @@ LED14,
 LED1
 };
 
-//Power up sequence states
-#define POWER_UP_TIMER_RESET   1
+
 enum{
     RAMP_UP = 0,
     RAMP_DOWN
 };
+
+#define POWER_UP_TIMER_RESET    25
 
 
 void updateBlueLEDs(uint8_t u8Index);
@@ -403,23 +404,17 @@ void runIndicateSequencesMode(void){
 
 uint8_t runPowerUpSequence(void){
     static uint8_t u8PowerUpState = RAMP_UP;
-    static uint8_t u8PowerUpTimer = POWER_UP_TIMER_RESET;
     static uint8_t u8BlueLEDCount = 0;
+    static uint8_t u8PowerUpTimer = POWER_UP_TIMER_RESET;
 
-    if(u8PowerUpTimer >0){
-        u8PowerUpTimer--;
-    }
-
-    if(u8PowerUpState == RAMP_UP){
-        if(u16_red_LED_duty_cycle++ == MAX_BRIGHTNESS){
-            u8PowerUpState = RAMP_DOWN;
-        }
-    }else{
-        setBlueLEDBrightness(led_ordered_array[u8BlueLEDCount], MAX_BRIGHTNESS);
+    if(u8PowerUpTimer-- == 0){
+        setBlueLEDBrightness(led_ordered_array[u8BlueLEDCount], HALF_BRIGHTNESS);
         u8BlueLEDCount++;
         if(u8BlueLEDCount == NUM_OF_BLUE_LEDS){
+            setRedLEDs(HALF_BRIGHTNESS);
             return 0;
         }
+        u8PowerUpTimer = POWER_UP_TIMER_RESET;
     }
 
     return 1;
@@ -430,10 +425,6 @@ void LEDIndicateError(void){
     u8IndicateErrorFlag = TRUE;
     u16_red_LED_duty_cycle = MAX_BRIGHTNESS;
     u8BlinkTimer = BLINK_TIMER_RESET;
-}
-
-uint8_t getPowerUpSequenceFlag(void){
-    return u8PowerUpSequenceFlag;
 }
 
 void setSwitchLEDState(uint8_t u8NewState){
@@ -589,9 +580,9 @@ void clear_led_shift_registers(void){
 
     for(i=0;i<NUM_OF_BLUE_LEDS;i++){
         TOGGLE_SR_CLK;
-        vTaskDelay(1*TICKS_PER_MS);
+       // vTaskDelay(1*TICKS_PER_MS);
         TOGGLE_SR_CLK;
-        vTaskDelay(1*TICKS_PER_MS);
+      //  vTaskDelay(1*TICKS_PER_MS);
     }
 
 }
@@ -725,19 +716,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
                     //Scale it according to the maximum brightness
                     u32_result *= MAX_BRIGHTNESS;
                     u32_result /= DISTANCE_LIMIT;
-
-//                    i32_BrightnessDifference = u32_result - u16_blue_LED_duty_cycles[u8_index] ;
-//
-//                    if(i32_BrightnessDifference > MAX_LED_SLEW_RATE ){
-//                            u16_blue_LED_duty_cycles[u8_index] += MAX_LED_SLEW_RATE;
-//                    }
-//                    else if(i32_BrightnessDifference < -MAX_LED_SLEW_RATE ){
-//                            u16_blue_LED_duty_cycles[u8_index] -= MAX_LED_SLEW_RATE;
-//                    }
-//                    else{
-                            u16BlueLEDDutyCycleBuffer[u8_index] = (uint16_t) u32_result;
-                   // }
-
+                    u16BlueLEDDutyCycleBuffer[u8_index] = (uint16_t) u32_result;
                 }
                 else{
                         u16BlueLEDDutyCycleBuffer[u8_index] = 0;
@@ -755,7 +734,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
     if(u16_ZPosition != 0){
             u16_red_LED_duty_cycle = (u16_ZPosition*MAX_BRIGHTNESS/MAX_LOCATION);
     }
-    else{
-            u16_red_LED_duty_cycle = 0;
-    }
+//    else{
+//            u16_red_LED_duty_cycle = 0;
+//    }
 }

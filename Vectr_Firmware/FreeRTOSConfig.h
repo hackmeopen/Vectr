@@ -85,10 +85,10 @@
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION                 1
 #define configUSE_IDLE_HOOK					0
 #define configUSE_TICK_HOOK					0
-#define configTICK_RATE_HZ					( ( portTickType ) 9600 )
+#define configTICK_RATE_HZ					( ( portTickType ) 10000 )
 #define TICKS_PER_MS                                            10
-#define configCPU_CLOCK_HZ					( 96000000UL )
-#define configPERIPHERAL_CLOCK_HZ				( 48000000UL )
+#define configCPU_CLOCK_HZ					( 80000000UL )
+#define configPERIPHERAL_CLOCK_HZ				( 40000000UL )
 #define configMAX_PRIORITIES					( 5UL )
 #define configMINIMAL_STACK_SIZE				( 120 )
 #define configISR_STACK_SIZE					( 400 )

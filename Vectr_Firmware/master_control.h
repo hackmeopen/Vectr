@@ -259,10 +259,8 @@ typedef struct{
     uint8_t u8PlaybackMode;//Looping or whatnot
     uint8_t u8PlaybackDirection;//forward or reverse
     uint8_t u8ModulationMode;//Speed or Scrub
-    int16_t i16ModulationDepth;//Depth of the effect
     uint8_t u8HoldBehavior[NUMBER_OF_OUTPUTS];//Hold the outputs
     uint8_t u8OverdubStatus[NUMBER_OF_OUTPUTS];
-    uint8_t u8AirScratch;
     uint8_t u16Quantization[NUMBER_OF_OUTPUTS];
     uint8_t u8MuteState[NUMBER_OF_OUTPUTS];
     uint8_t u8ClockMode;

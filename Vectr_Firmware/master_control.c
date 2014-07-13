@@ -10,6 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
+//TODO When the menu setting is stored write it to the file table.
 //TODO Test hold modes
 //TODO Test clock and gate output
 //TODO Test Mute Mode
@@ -159,6 +160,10 @@ void MasterControlInit(void){
     VectrData.u8PlaybackMode = LOOPING;
     VectrData.u8PlaybackDirection = FORWARD_PLAYBACK;
     VectrData.u8PlaybackMode = LOOPING;
+    VectrData.u8ModulationMode = SPEED;
+    VectrData.u8GateMode = HAND_GATE;
+    VectrData.u8ClockMode = CLOCK_PULSE_1;
+
     VectrData.u16SlewRate[X_OUTPUT_INDEX] = MID_SLEW_RATE;
     VectrData.u16SlewRate[Y_OUTPUT_INDEX] = MID_SLEW_RATE;
     VectrData.u16SlewRate[Z_OUTPUT_INDEX] = MID_SLEW_RATE;
@@ -166,12 +171,15 @@ void MasterControlInit(void){
     VectrData.u8Range[X_OUTPUT_INDEX] = RANGE_UNI_5V;
     VectrData.u8Range[Y_OUTPUT_INDEX] = RANGE_UNI_5V;
     VectrData.u8Range[Z_OUTPUT_INDEX] = RANGE_UNI_5V;
+
     VectrData.u8Source[RECORD] = SWITCH;
     VectrData.u8Source[PLAY] = SWITCH;
     VectrData.u8Source[OVERDUB] = SWITCH;
+
     VectrData.u8Control[RECORD] = TRIGGER;
     VectrData.u8Control[PLAY] = TRIGGER_AUTO;
     VectrData.u8Control[OVERDUB] = TRIGGER;
+
     VectrData.u8OverdubStatus[X_OUTPUT_INDEX] = TRUE;
     VectrData.u8OverdubStatus[Y_OUTPUT_INDEX] = TRUE;
     VectrData.u8OverdubStatus[Z_OUTPUT_INDEX] = TRUE;

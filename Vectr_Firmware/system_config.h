@@ -57,8 +57,8 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 */
 
 /*System Clock Frequency*/
-#define SYS_CLOCK              96000000
-#define PERIPHERAL_CLOCK       48000000
+#define SYS_CLOCK              80000000
+#define PERIPHERAL_CLOCK       40000000
 
 
 /*I2C Definitions*/

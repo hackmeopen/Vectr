@@ -122,6 +122,7 @@ void menuHandlerInit(void){
 
 void MenuStateMachine(void){
     uint8_t u8ExitWithoutSavingFlag = TRUE;
+    uint8_t u8MemCommand;
 
     //Check to see if the encoder moved
     if(i8MenuChangeFlag != 0 && i8SubMenuState == SUBMENU_NOT_SELECTED){
@@ -331,7 +332,9 @@ void MenuStateMachine(void){
         }
         else{
             //Write the file table.
-            setFileTableWriteFlag();
+           // setFileTableWriteFlag();
+            u8MemCommand = WRITE_FLASH_FILE_TABLE;
+            xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
         }
         resetEncoderLiveInteraction();//Encoder turning needs to be reset to not get spurious changes.
         i8SubMenuState = SUBMENU_NOT_SELECTED;
