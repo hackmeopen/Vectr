@@ -203,6 +203,8 @@ void setNewReadAddress(uint32_t u32NewReadAddress);
 void setNewSequenceEndAddress(uint32_t u32NewSequenceEndAddress);
 uint32_t getSequencePlaybackPosition(void);
 void changeFlashPlaybackDirection(uint8_t u8NewDirection);
+void copyCurrentSettingsToFileTable(uint8_t u8Index);
+void loadSettingsFromFileTable(uint8_t u8Index);
 
 
 #endif	/* MEM_H */

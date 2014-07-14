@@ -400,6 +400,8 @@ uint8_t flashStoreSequence(uint8_t u8SequenceIndex, uint32_t u32SequenceLength){
     //Set the sequence size in the table.
     ftFileTable.u32SequenceLengthTable[u8SequenceIndex] =  u32BytesWritten;
 
+    //Copy the current settings to the table.
+    copyCurrentSettingsToFileTable(u8SequenceIndex);
 
     //Write the updated file table.
     writeFlashFileTable();
@@ -459,6 +461,8 @@ uint8_t flashLoadSequence(uint8_t u8SequenceIndex){
         u8CurrentSector++;
     }
 
+    //Load the settings for the recorded sequence.
+    loadSettingsFromFileTable(u8SequenceIndex);
 
     //Set the end of recording address.
     u32SequenceEndAddress = ftFileTable.u32SequenceLengthTable[u8SequenceIndex];
@@ -607,6 +611,32 @@ void initializeFileTable(void){
     //Write the file table
     writeFlashFileTable();
 
+}
+
+void loadSettingsFromFileTable(uint8_t u8Index){
+    uint8_t * p_u8DataStructItem = getDataStructAddress();;
+    uint8_t * p_u8FileTableItem = &(ftFileTable.vdsSettingsTable[u8Index].u8Range[0]);
+    int i;
+
+    //Copy the structure into the file table.
+    for(i=0; i<sizeof(VectrDataStruct); i++){
+        *p_u8DataStructItem = *p_u8FileTableItem;
+        p_u8FileTableItem++;
+        p_u8DataStructItem++;
+    }
+}
+
+void copyCurrentSettingsToFileTable(uint8_t u8Index){
+    uint8_t * p_u8DataStructItem = getDataStructAddress();;
+    uint8_t * p_u8FileTableItem = &(ftFileTable.vdsSettingsTable[u8Index].u8Range[0]);
+    int i;
+
+    //Copy the structure into the file table.
+    for(i=0; i<sizeof(VectrDataStruct); i++){
+        *p_u8FileTableItem = *p_u8DataStructItem;
+        p_u8FileTableItem++;
+        p_u8DataStructItem++;
+    }
 }
 
 //Write the flash file table all at once.

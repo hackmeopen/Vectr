@@ -5,6 +5,7 @@
 #include "task.h"
 #include "leds.h"
 #include "master_control.h"
+#include "mem.h"
 
 
 static  uint16_t u16encState;
@@ -331,8 +332,18 @@ void MenuStateMachine(void){
             resetMenuParameter();
         }
         else{
-            //Write the file table.
-           // setFileTableWriteFlag();
+            //Write the file table with the stored settings.
+            //If the no sequence has been recorded, or the present sequence is playing
+            //from RAM, then the default file table location is used.
+            if((getSequenceRecordedFlag() == FALSE) ||
+                getStoredSequenceLocationFlag() == STORED_IN_RAM){
+                copyCurrentSettingsToFileTable(0);
+            }
+            else{
+                //Playing from flash. Copy the settings into two locations.
+                copyCurrentSettingsToFileTable(0);
+                copyCurrentSettingsToFileTable(getCurrentSequenceIndex());
+            }
             u8MemCommand = WRITE_FLASH_FILE_TABLE;
             xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
         }

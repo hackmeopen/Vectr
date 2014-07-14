@@ -10,6 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
+//TODO Store the settings for recorded sequences.
 //TODO When the menu setting is stored write it to the file table.
 //TODO Test hold modes
 //TODO Test clock and gate output
@@ -854,10 +855,12 @@ void MasterControlStateMachine(void){
                     setStoredSequenceLocationFlag(STORED_IN_RAM);
                     resetRAMReadAddress();
                     resetRAMEndofReadAddress();
+                    loadSettingsFromFileTable(0);
                 }
                 else{
                     setStoredSequenceLocationFlag(STORED_IN_FLASH);
                     setFlashReadNewSequence(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
+                    loadSettingsFromFileTable(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
                 }
                 u8SequenceRecordedFlag = TRUE;
                 u8PlaybackRunFlag = RUN;
@@ -2392,9 +2395,6 @@ void linearizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
 
     }
 
-//    VectrData.u16CurrentXPosition = u16NewPosition[X_OUTPUT_INDEX];
-//    VectrData.u16CurrentYPosition = u16NewPosition[Y_OUTPUT_INDEX];
-//    VectrData.u16CurrentZPosition = u16NewPosition[Z_OUTPUT_INDEX];
     p_pos_and_gesture_struct->u16XPosition = u16NewPosition[X_OUTPUT_INDEX];
     p_pos_and_gesture_struct->u16YPosition = u16NewPosition[Y_OUTPUT_INDEX];
     p_pos_and_gesture_struct->u16ZPosition = u16NewPosition[Z_OUTPUT_INDEX];
