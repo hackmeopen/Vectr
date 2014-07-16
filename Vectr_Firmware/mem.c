@@ -685,8 +685,8 @@ void writeFlashFileTable(void){
     
     setDMAState(DMA_FLASH_WRITE);
 
-    p_u8FileTableData = &ftFileTable.u8SPIMessage[3] + 2;//Point to the start of the file table + 2
-    p_u8EndofFileTable = &ftFileTable.u8SPIMessage[3] + 1 + sizeof(ftFileTable);
+    p_u8FileTableData = (uint8_t *) &ftFileTable.u32AvailableMemorySpace + 1;//Point to the start of the file table + 2
+    p_u8EndofFileTable = (uint8_t *) &ftFileTable + sizeof(file_table);
     
     //Write until we reach the end of the file table.
     while(p_u8FileTableData != p_u8EndofFileTable){
