@@ -599,7 +599,7 @@ void initializeFileTable(void){
     //The first entry in the settings table is the active table.
     //Gotta save it.
     p_u8DataStructItem = getDataStructAddress();
-    p_u8FileTableItem = &(ftFileTable.vdsSettingsTable[0].u8Range[0]);
+    p_u8FileTableItem = (uint8_t *) &ftFileTable.vdsSettingsTable[0];
 
     //Copy the structure into the file table.
     for(i=0; i<sizeof(VectrDataStruct); i++){
@@ -615,7 +615,7 @@ void initializeFileTable(void){
 
 void loadSettingsFromFileTable(uint8_t u8Index){
     uint8_t * p_u8DataStructItem = getDataStructAddress();;
-    uint8_t * p_u8FileTableItem = &(ftFileTable.vdsSettingsTable[u8Index].u8Range[0]);
+    uint8_t * p_u8FileTableItem = (uint8_t *) &ftFileTable.vdsSettingsTable[u8Index];
     int i;
 
     //Copy the structure into the file table.

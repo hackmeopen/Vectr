@@ -333,16 +333,7 @@ void MenuStateMachine(void){
         }
         else{
             //Write the file table with the stored settings.
-            //If the no sequence has been recorded, or the present sequence is playing
-            //from RAM, then the default file table location is used.
-            if((getSequenceRecordedFlag() == FALSE) ||
-                getStoredSequenceLocationFlag() == STORED_IN_RAM){
-                copyCurrentSettingsToFileTable(0);
-            }
-            else{
-                //Playing from flash.
-                copyCurrentSettingsToFileTable(getCurrentSequenceIndex()+1);//The first location is the base case.
-            }
+            copyCurrentSettingsToFileTable(0);
             u8MemCommand = WRITE_FLASH_FILE_TABLE;
             xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
         }

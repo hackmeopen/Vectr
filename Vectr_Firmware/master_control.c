@@ -23,8 +23,6 @@
 //TODO Test Air Scratch - change speed and direction
 //TODO Dismiss a hold or live play activation during sequence mode - Test this - maybe more null checking?
 //TODO Make sure nothing bad happens when gestures are made at startup.
-//TODO Test memory at 20MHz SPI Bus
-//TODO  Test store settings after making a menu change
 //TODO Test jack detection with final sample
 //TODO Test with 512k RAM with final sample
 
@@ -882,6 +880,13 @@ void MasterControlStateMachine(void){
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
                             p_VectrData->u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            /*Copy the current data structure into the standard local
+                             data structure.*/
+                            if(getStoredSequenceLocationFlag() != STORED_IN_RAM){
+                                p_VectrData = &VectrData;
+                                loadSettingsFromFileTable(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
+                            }
+
                             break;
                         default:
                             break;
@@ -2594,5 +2599,5 @@ void setResetFlag(uint8_t u8NewState){
 }
 
 VectrDataStruct * getVectrDataStart(void){
-    return &VectrData;
+    return p_VectrData;
 }
