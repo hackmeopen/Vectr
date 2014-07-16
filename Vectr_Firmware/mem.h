@@ -157,7 +157,7 @@ typedef struct{
     uint32_t u32SequenceStartAddress[MAXIMUM_NUMBER_OF_STORED_SEQUENCES];
     uint32_t u32SequenceEndAddress[MAXIMUM_NUMBER_OF_STORED_SEQUENCES];
     flash_file_table_entry flash_file_table[FLASH_NUMBER_OF_MEMORY_SECTORS];
-    VectrDataStruct vdsSettingsTable[5];
+    VectrDataStruct vdsSettingsTable[MAXIMUM_NUMBER_OF_STORED_SEQUENCES+1];
 }file_table;
 
 
@@ -205,6 +205,7 @@ uint32_t getSequencePlaybackPosition(void);
 void changeFlashPlaybackDirection(uint8_t u8NewDirection);
 void copyCurrentSettingsToFileTable(uint8_t u8Index);
 void loadSettingsFromFileTable(uint8_t u8Index);
+VectrDataStruct * setFileTableDataPointer(uint8_t u8Index);
 
 
 #endif	/* MEM_H */

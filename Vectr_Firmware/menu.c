@@ -340,9 +340,8 @@ void MenuStateMachine(void){
                 copyCurrentSettingsToFileTable(0);
             }
             else{
-                //Playing from flash. Copy the settings into two locations.
-                copyCurrentSettingsToFileTable(0);
-                copyCurrentSettingsToFileTable(getCurrentSequenceIndex());
+                //Playing from flash.
+                copyCurrentSettingsToFileTable(getCurrentSequenceIndex()+1);//The first location is the base case.
             }
             u8MemCommand = WRITE_FLASH_FILE_TABLE;
             xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);

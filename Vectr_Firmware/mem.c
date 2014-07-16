@@ -628,7 +628,7 @@ void loadSettingsFromFileTable(uint8_t u8Index){
 
 void copyCurrentSettingsToFileTable(uint8_t u8Index){
     uint8_t * p_u8DataStructItem = getDataStructAddress();;
-    uint8_t * p_u8FileTableItem = &(ftFileTable.vdsSettingsTable[u8Index].u8Range[0]);
+    uint8_t * p_u8FileTableItem = (uint8_t *) &ftFileTable.vdsSettingsTable[u8Index];
     int i;
 
     //Copy the structure into the file table.
@@ -637,6 +637,10 @@ void copyCurrentSettingsToFileTable(uint8_t u8Index){
         p_u8FileTableItem++;
         p_u8DataStructItem++;
     }
+}
+
+VectrDataStruct * setFileTableDataPointer(uint8_t u8Index){
+    return &ftFileTable.vdsSettingsTable[u8Index+1];
 }
 
 //Write the flash file table all at once.
@@ -838,7 +842,7 @@ void flashWriteByte(uint8_t u8Byte){
 
     SET_FLASH_SPI_EN;
 
-    vTaskDelay(2);
+    vTaskDelay(1);
 }
 
 void startFileTableWrite(void){

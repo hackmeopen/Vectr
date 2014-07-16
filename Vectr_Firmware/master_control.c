@@ -10,8 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Store the settings for recorded sequences.
-//TODO When the menu setting is stored write it to the file table.
+//TODO Test storing and recalling the settings for recorded sequences.
 //TODO Test hold modes
 //TODO Test clock and gate output
 //TODO Test Mute Mode
@@ -23,7 +22,6 @@
 //TODO Test Ramp Output
 //TODO Test Air Scratch - change speed and direction
 //TODO Dismiss a hold or live play activation during sequence mode - Test this - maybe more null checking?
-//TODO Test start-up behavior
 //TODO Make sure nothing bad happens when gestures are made at startup.
 //TODO Test memory at 20MHz SPI Bus
 //TODO  Test store settings after making a menu change
@@ -52,6 +50,7 @@
 
 
 static VectrDataStruct VectrData;
+static VectrDataStruct * p_VectrData;
 
 static uint8_t u8KeyPressFlag = FALSE;
 static uint8_t u8EncKeyPressFlag = FALSE;
@@ -213,6 +212,7 @@ void MasterControlInit(void){
     u8MenuModeFlag = FALSE;
     u8EncKeyPressFlag = FALSE;
 
+    p_VectrData = &VectrData;
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
 }
 
@@ -226,7 +226,7 @@ void MasterControlStateMachine(void){
     static uint16_t u16LastAirWheelData;
     int16_t i16AirWheelChange;
     uint8_t u8SampleTimerFlag;//used when the clock is running very slowly to make sure gestures respond
-    uint8_t u8OperatingMode = VectrData.u8OperatingMode;
+    uint8_t u8OperatingMode = p_VectrData->u8OperatingMode;
     io_event_message event_message;
     uint8_t u8PlayTrigger = NO_TRIGGER;
     uint8_t u8RecordTrigger = NO_TRIGGER;
@@ -347,9 +347,9 @@ void MasterControlStateMachine(void){
                 }
             }
             else{
-                pos_and_gesture_struct.u16XPosition = VectrData.u16CurrentXPosition;
-                pos_and_gesture_struct.u16YPosition = VectrData.u16CurrentYPosition;
-                pos_and_gesture_struct.u16ZPosition = VectrData.u16CurrentZPosition;
+                pos_and_gesture_struct.u16XPosition = p_VectrData->u16CurrentXPosition;
+                pos_and_gesture_struct.u16YPosition = p_VectrData->u16CurrentYPosition;
+                pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
             }
 
             slewPosition(&pos_and_gesture_struct);
@@ -410,7 +410,7 @@ void MasterControlStateMachine(void){
                     u8PlayTrigger = NO_TRIGGER;
                     if(u8SequenceRecordedFlag == TRUE){
                         u8PlaybackArmedFlag = NOT_ARMED;
-                        VectrData.u8OperatingMode = PLAYBACK;
+                        p_VectrData->u8OperatingMode = PLAYBACK;
                         u8PlaybackRunFlag = RUN;
                     }
                 }
@@ -456,7 +456,7 @@ void MasterControlStateMachine(void){
             else if(u8LivePlayActivationFlag == TRUE){
                 finishRecording();
                 setSwitchLEDState(OFF);
-                VectrData.u8OperatingMode = LIVE_PLAY;
+                p_VectrData->u8OperatingMode = LIVE_PLAY;
                 u8LivePlayActivationFlag = FALSE;
             }
 
@@ -480,7 +480,7 @@ void MasterControlStateMachine(void){
 
             /*If we're in gate mode, then a low level stops recording. A high level starts recording.
              */
-            if(VectrData.u8Control[RECORD] == GATE && VectrData.u8Source[RECORD] == EXTERNAL){
+            if(p_VectrData->u8Control[RECORD] == GATE && p_VectrData->u8Source[RECORD] == EXTERNAL){
                 if(u8RecordRunFlag == TRUE && u8RecordTrigger == TRIGGER_WENT_LOW){
                     u8RecordRunFlag = FALSE;
                     finishRecording();
@@ -500,7 +500,7 @@ void MasterControlStateMachine(void){
                     /*Clear the trigger and go to playback.*/
                     u8PlayTrigger = NO_TRIGGER;
                     u8PlaybackArmedFlag = NOT_ARMED;
-                    VectrData.u8OperatingMode = PLAYBACK;
+                    p_VectrData->u8OperatingMode = PLAYBACK;
                     u8PlaybackRunFlag = RUN;
                 }
             }
@@ -516,7 +516,7 @@ void MasterControlStateMachine(void){
                  * In trigger mode, a low->high will stop recording.
                  * In gate mode, a high->low will stop recording.
                  */
-                if(VectrData.u8Control[RECORD] == TRIGGER){
+                if(p_VectrData->u8Control[RECORD] == TRIGGER){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                         u8RecordingArmedFlag = NOT_ARMED;
                         finishRecording();
@@ -558,7 +558,7 @@ void MasterControlStateMachine(void){
                             }
                             break;
                         case OVERDUB_MODE:
-                            VectrData.u8OperatingMode =  OVERDUBBING;
+                            p_VectrData->u8OperatingMode =  OVERDUBBING;
                             setLEDAlternateFuncFlag(TRUE);
                             turnOffAllLEDs();
                             setIndicateOverdubModeFlag(TRUE);
@@ -612,7 +612,7 @@ void MasterControlStateMachine(void){
             
             /*If we're in gate mode, then a low level stops recording. A high level starts recording.
              */
-            if(VectrData.u8Control[PLAY] == GATE && VectrData.u8Source[PLAY] == EXTERNAL){
+            if(p_VectrData->u8Control[PLAY] == GATE && p_VectrData->u8Source[PLAY] == EXTERNAL){
                 if(u8PlaybackRunFlag == RUN && u8PlayTrigger == TRIGGER_WENT_LOW){
                     u8PlaybackRunFlag = STOP;
                 }
@@ -629,17 +629,17 @@ void MasterControlStateMachine(void){
                  * If playback mode is Flip then a trigger will cause a direction change
                  * and not stop playback or start playback.
                  */
-                if(VectrData.u8PlaybackMode != FLIP &&
-                   VectrData.u8PlaybackMode != RETRIGGER){
-                    if(((VectrData.u8Control[PLAY] == TRIGGER) || (VectrData.u8Control[PLAY] == TRIGGER_AUTO))
+                if(p_VectrData->u8PlaybackMode != FLIP &&
+                   p_VectrData->u8PlaybackMode != RETRIGGER){
+                    if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
                             && (u8PlayTrigger == TRIGGER_WENT_HIGH)){
                         u8PlaybackArmedFlag = NOT_ARMED;
                         /*Clear the trigger and start playback.*/
                         u8PlayTrigger = NO_TRIGGER;
                         u8PlaybackRunFlag = RUN;
                     }
-                }else if(VectrData.u8PlaybackMode == FLIP){
-                    if(VectrData.u8PlaybackDirection == FORWARD_PLAYBACK){
+                }else if(p_VectrData->u8PlaybackMode == FLIP){
+                    if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
                         setPlaybackDirection(REVERSE_PLAYBACK);
                     }
                     else{
@@ -653,7 +653,7 @@ void MasterControlStateMachine(void){
                 }
             }
             else if(u8PlaybackArmedFlag == DISARMED){
-                if(((VectrData.u8Control[PLAY] == TRIGGER) || (VectrData.u8Control[PLAY] == TRIGGER_AUTO))
+                if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
                         && (u8PlayTrigger == TRIGGER_WENT_LOW)){
                     u8PlaybackArmedFlag = NOT_ARMED;
                     /*Clear the trigger and start playback.*/
@@ -698,7 +698,7 @@ void MasterControlStateMachine(void){
                 //Overdub the retrieved sample
                 if(Flags.u8OverdubActiveFlag == TRUE){
                     //Overdub the axes with overdub active and for the others write back the accessed data
-                    if(VectrData.u8OverdubStatus[X_OUTPUT_INDEX] == 1){
+                    if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1){
                         p_mem_pos_and_gesture_struct->u16XPosition = pos_and_gesture_struct.u16XPosition;
                         p_overdub_pos_and_gesture_struct->u16XPosition = pos_and_gesture_struct.u16XPosition;
                     }
@@ -706,7 +706,7 @@ void MasterControlStateMachine(void){
                        p_overdub_pos_and_gesture_struct->u16XPosition =  p_mem_pos_and_gesture_struct->u16XPosition;
                     }
 
-                    if(VectrData.u8OverdubStatus[Y_OUTPUT_INDEX] == 1){
+                    if(p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] == 1){
                         p_mem_pos_and_gesture_struct->u16YPosition = pos_and_gesture_struct.u16YPosition;
                         p_overdub_pos_and_gesture_struct->u16YPosition = pos_and_gesture_struct.u16YPosition;
                     }
@@ -714,7 +714,7 @@ void MasterControlStateMachine(void){
                         p_overdub_pos_and_gesture_struct->u16YPosition =  p_mem_pos_and_gesture_struct->u16YPosition;
                     }
 
-                    if(VectrData.u8OverdubStatus[Z_OUTPUT_INDEX] == 1){
+                    if(p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX] == 1){
                         p_mem_pos_and_gesture_struct->u16ZPosition = pos_and_gesture_struct.u16ZPosition;
                         p_overdub_pos_and_gesture_struct->u16ZPosition = pos_and_gesture_struct.u16ZPosition;
                     }
@@ -766,7 +766,7 @@ void MasterControlStateMachine(void){
                             Flags.u8OverdubActiveFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateOverdubModeFlag(FALSE);
-                            VectrData.u8OperatingMode =  PLAYBACK;
+                            p_VectrData->u8OperatingMode =  PLAYBACK;
                             break;
                         case OVERDUB_MODE:
 
@@ -782,13 +782,13 @@ void MasterControlStateMachine(void){
                         u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
                         switch(u8GestureFlag){
                             case X_OUTPUT_INDEX:
-                                VectrData.u8OverdubStatus[X_OUTPUT_INDEX] ^= 1;
+                                p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] ^= 1;
                                 break;
                             case Y_OUTPUT_INDEX:
-                                VectrData.u8OverdubStatus[Y_OUTPUT_INDEX] ^= 1;
+                                p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] ^= 1;
                                 break;
                             case Z_OUTPUT_INDEX:
-                                VectrData.u8OverdubStatus[Z_OUTPUT_INDEX] ^= 1;
+                                p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX] ^= 1;
                                 break;
                             default:
                                 break;
@@ -798,7 +798,7 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            if(VectrData.u8Control[OVERDUB] == GATE && VectrData.u8Source[OVERDUB] == EXTERNAL){
+            if(p_VectrData->u8Control[OVERDUB] == GATE && p_VectrData->u8Source[OVERDUB] == EXTERNAL){
                 if(u8OverdubRunFlag == TRUE && u8RecordTrigger == TRIGGER_WENT_LOW){
                     Flags.u8OverdubActiveFlag = FALSE;
                 }
@@ -812,7 +812,7 @@ void MasterControlStateMachine(void){
              */
             if(u8OverdubArmedFlag == ARMED){
                 /*Look for a rising edge to start playback*/
-                if(VectrData.u8Control[OVERDUB] == TRIGGER && u8RecordTrigger == TRIGGER_WENT_HIGH){
+                if(p_VectrData->u8Control[OVERDUB] == TRIGGER && u8RecordTrigger == TRIGGER_WENT_HIGH){
                     u8OverdubArmedFlag = NOT_ARMED;
                     /*Clear the trigger and start playback.*/
                     u8RecordTrigger = NO_TRIGGER;
@@ -820,7 +820,7 @@ void MasterControlStateMachine(void){
                 }
             }
             else if(u8OverdubArmedFlag == DISARMED){
-                if(VectrData.u8Control[OVERDUB] == TRIGGER && u8RecordTrigger == TRIGGER_WENT_LOW){
+                if(p_VectrData->u8Control[OVERDUB] == TRIGGER && u8RecordTrigger == TRIGGER_WENT_LOW){
                     u8OverdubArmedFlag = NOT_ARMED;
                     /*Clear the trigger and start playback.*/
                     u8RecordTrigger = NO_TRIGGER;
@@ -855,12 +855,16 @@ void MasterControlStateMachine(void){
                     setStoredSequenceLocationFlag(STORED_IN_RAM);
                     resetRAMReadAddress();
                     resetRAMEndofReadAddress();
-                    loadSettingsFromFileTable(0);
+                    //Move the Vectr Data pointer to the standard table.
+                    p_VectrData = &VectrData;
+                    //loadSettingsFromFileTable(0);
                 }
                 else{
                     setStoredSequenceLocationFlag(STORED_IN_FLASH);
                     setFlashReadNewSequence(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
-                    loadSettingsFromFileTable(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
+                    //Move teh Vectr Data pointer to a table in the local file table.
+                    p_VectrData = setFileTableDataPointer(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
+                   // loadSettingsFromFileTable(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
                 }
                 u8SequenceRecordedFlag = TRUE;
                 u8PlaybackRunFlag = RUN;
@@ -877,7 +881,7 @@ void MasterControlStateMachine(void){
                             Flags.u8SequencingFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
-                            VectrData.u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            p_VectrData->u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
                             break;
                         default:
                             break;
@@ -934,7 +938,7 @@ void MasterControlStateMachine(void){
                             Flags.u8SequencingFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
-                            VectrData.u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            p_VectrData->u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
                             break;
                         default:
                             break;
@@ -946,13 +950,13 @@ void MasterControlStateMachine(void){
                         u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
                         switch(u8GestureFlag){
                             case X_OUTPUT_INDEX://Left
-                                VectrData.u8MuteState[X_OUTPUT_INDEX] ^= TRUE;
+                                p_VectrData->u8MuteState[X_OUTPUT_INDEX] ^= TRUE;
                                 break;
                             case Y_OUTPUT_INDEX://Top
-                                VectrData.u8MuteState[Y_OUTPUT_INDEX] ^= TRUE;
+                                p_VectrData->u8MuteState[Y_OUTPUT_INDEX] ^= TRUE;
                                 break;
                             case Z_OUTPUT_INDEX://Right
-                                VectrData.u8MuteState[Z_OUTPUT_INDEX] ^= TRUE;
+                                p_VectrData->u8MuteState[Z_OUTPUT_INDEX] ^= TRUE;
                                 break;
                             default:
                                 break;
@@ -1013,8 +1017,8 @@ void runPlaybackMode(void){
         }
         else if(u8LivePlayActivationFlag == TRUE){
             setSwitchLEDState(OFF);
-            if(VectrData.u8OperatingMode != SEQUENCING){
-                VectrData.u8OperatingMode = LIVE_PLAY;
+            if(p_VectrData->u8OperatingMode != SEQUENCING){
+                p_VectrData->u8OperatingMode = LIVE_PLAY;
             }
             u8LivePlayActivationFlag = FALSE;
         }
@@ -1139,21 +1143,21 @@ void calculateRampOutput(pos_and_gesture_data * p_pos_and_gesture_struct){
     uint32_t u32SequencePosition;
     uint32_t u32OutputValue;
 
-    if(VectrData.u8Range[X_OUTPUT_INDEX] == RAMP ||
-       VectrData.u8Range[Y_OUTPUT_INDEX] == RAMP ||
-       VectrData.u8Range[Z_OUTPUT_INDEX] == RAMP){
+    if(p_VectrData->u8Range[X_OUTPUT_INDEX] == RAMP ||
+       p_VectrData->u8Range[Y_OUTPUT_INDEX] == RAMP ||
+       p_VectrData->u8Range[Z_OUTPUT_INDEX] == RAMP){
         u32SequenceLength = getActiveSequenceLength();
         u32SequencePosition = getSequencePlaybackPosition();
         u32OutputValue = MAXIMUM_OUTPUT_VALUE*u32SequencePosition;
         u32OutputValue /= u32SequenceLength;
         
-        if(VectrData.u8Range[X_OUTPUT_INDEX] == RAMP){
+        if(p_VectrData->u8Range[X_OUTPUT_INDEX] == RAMP){
             p_pos_and_gesture_struct->u16XPosition = u32OutputValue;
         }
-        if(VectrData.u8Range[Y_OUTPUT_INDEX] == RAMP){
+        if(p_VectrData->u8Range[Y_OUTPUT_INDEX] == RAMP){
             p_pos_and_gesture_struct->u16YPosition = u32OutputValue;
         }
-        if(VectrData.u8Range[Z_OUTPUT_INDEX] == RAMP){
+        if(p_VectrData->u8Range[Z_OUTPUT_INDEX] == RAMP){
             p_pos_and_gesture_struct->u16ZPosition = u32OutputValue;
         }
     }
@@ -1162,11 +1166,11 @@ void calculateRampOutput(pos_and_gesture_data * p_pos_and_gesture_struct){
 void calculateNextClockPulse(void){
     uint32_t u32LengthOfSequence = getActiveSequenceLength();
     
-    u32NextClockPulseIndex = u32LengthOfSequence>>(1<<VectrData.u8ClockMode);
+    u32NextClockPulseIndex = u32LengthOfSequence>>(1<<p_VectrData->u8ClockMode);
 }
 
 void enterOverdubMode(void){
-    VectrData.u8OperatingMode =  OVERDUBBING;
+    p_VectrData->u8OperatingMode =  OVERDUBBING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
     setIndicateOverdubModeFlag(TRUE);
@@ -1175,12 +1179,12 @@ void enterOverdubMode(void){
 }
 
 void enterAirScratchMode(void){
-    VectrData.u8OperatingMode = AIR_SCRATCHING;
+    p_VectrData->u8OperatingMode = AIR_SCRATCHING;
     Flags.u8AirScratchFlag = FALSE;
 }
 
 void enterMuteMode(void){
-    VectrData.u8OperatingMode = MUTING;
+    p_VectrData->u8OperatingMode = MUTING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
     setIndicateMuteModeFlag(TRUE);
@@ -1213,7 +1217,7 @@ void enterSequencerMode(void){
     /*If at least one sequence is recorded, go to sequence mode, otherwise
      * indicate an error*/
     if(atLeastOneSequenceRecordedFlag == TRUE){
-        VectrData.u8OperatingMode = SEQUENCING;
+        p_VectrData->u8OperatingMode = SEQUENCING;
         Flags.u8SequencingFlag = FALSE;
         setLEDAlternateFuncFlag(TRUE);
         turnOffAllLEDs();
@@ -1227,8 +1231,8 @@ void enterSequencerMode(void){
 
 //Muting sets the output channel to 0V.
 void mutePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
-    if(VectrData.u8MuteState[X_OUTPUT_INDEX] == TRUE){
-        if(VectrData.u8Range[X_OUTPUT_INDEX] <= RANGE_BI_2_5V){
+    if(p_VectrData->u8MuteState[X_OUTPUT_INDEX] == TRUE){
+        if(p_VectrData->u8Range[X_OUTPUT_INDEX] <= RANGE_BI_2_5V){
             p_pos_and_gesture_struct->u16XPosition = ZERO_VOLT_OUTPUT_VALUE;
         }
         else{
@@ -1236,8 +1240,8 @@ void mutePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
         }
     }
 
-    if(VectrData.u8MuteState[Y_OUTPUT_INDEX] == TRUE){
-        if(VectrData.u8Range[Y_OUTPUT_INDEX] <= RANGE_BI_2_5V){
+    if(p_VectrData->u8MuteState[Y_OUTPUT_INDEX] == TRUE){
+        if(p_VectrData->u8Range[Y_OUTPUT_INDEX] <= RANGE_BI_2_5V){
             p_pos_and_gesture_struct->u16YPosition = ZERO_VOLT_OUTPUT_VALUE;
         }
         else{
@@ -1245,8 +1249,8 @@ void mutePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
         }
     }
 
-    if(VectrData.u8MuteState[Z_OUTPUT_INDEX] == TRUE){
-        if(VectrData.u8Range[Z_OUTPUT_INDEX] <= RANGE_BI_2_5V){
+    if(p_VectrData->u8MuteState[Z_OUTPUT_INDEX] == TRUE){
+        if(p_VectrData->u8Range[Z_OUTPUT_INDEX] <= RANGE_BI_2_5V){
             p_pos_and_gesture_struct->u16ZPosition = ZERO_VOLT_OUTPUT_VALUE;
         }
         else{
@@ -1287,7 +1291,7 @@ void gateHandler(void){
         RECORD_GATE - High during recording, low when not.
         QUANT_GATE - Pulse for every quantization step.
      */
-    uint8_t u8GateMode = VectrData.u8GateMode;
+    uint8_t u8GateMode = p_VectrData->u8GateMode;
 
     switch(u8GateMode){
         case HAND_GATE:
@@ -1356,7 +1360,7 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
                                         p_pos_and_gesture_struct->u16ZPosition};
     
     for(i=0;i<NUMBER_OF_OUTPUTS;i++){
-        u8QuantizationMode = VectrData.u16Quantization[i];
+        u8QuantizationMode = p_VectrData->u16Quantization[i];
         u16temp = u16CurrentPosition[i];
         
         switch(u8QuantizationMode){
@@ -1405,7 +1409,7 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
 
     /*Get the ADC data and make some change based on it.*/
     if(xQueueReceive(xADCQueue, &u16ADCData, 0)){
-        switch(VectrData.u8ModulationMode){
+        switch(p_VectrData->u8ModulationMode){
             case SPEED:
                 adjustSpeedModulation(u16ADCData>>2);
                 break;
@@ -1566,13 +1570,13 @@ uint16_t scaleBinarySearch(const uint16_t *p_scale, uint16_t u16Position, uint8_
 }
 
 uint8_t getPlaybackDirection(void){
-    return VectrData.u8PlaybackDirection;
+    return p_VectrData->u8PlaybackDirection;
 }
 
 void setPlaybackDirection(uint8_t u8NewDirection){
-    uint8_t u8OldDirection = VectrData.u8PlaybackDirection;
+    uint8_t u8OldDirection = p_VectrData->u8PlaybackDirection;
 
-    VectrData.u8PlaybackDirection = u8NewDirection;
+    p_VectrData->u8PlaybackDirection = u8NewDirection;
     /*If playback is coming out of flash, then the end of the sector needs
      to be adjusted for the new playback direction.*/
     if(getStoredSequenceLocationFlag() == STORED_IN_FLASH && (u8OldDirection != u8NewDirection)){
@@ -1581,7 +1585,7 @@ void setPlaybackDirection(uint8_t u8NewDirection){
 }
 
 uint8_t getPlaybackMode(void){
-    return VectrData.u8PlaybackMode;
+    return p_VectrData->u8PlaybackMode;
 }
 
 /*This function is executed during playback when a sync pulse arrives.*/
@@ -1593,7 +1597,7 @@ void syncHandler(void){
      * 4. One-shot -  Sync pulse causes playback to start over at the beginning of the recording.
      * 5. Retrigger - Sync pulse causes playback to start over at the beginning of the recording. Causes 
      */
-    switch(VectrData.u8PlaybackMode){
+    switch(p_VectrData->u8PlaybackMode){
         case LOOPING:
         case PENDULUM:
             //Reset the RAM read address.
@@ -1608,7 +1612,7 @@ void syncHandler(void){
             u8PlaybackRunFlag = RUN;
             break;
         case FLIP:
-            setPlaybackDirection(VectrData.u8PlaybackDirection ^= REVERSE_PLAYBACK);
+            setPlaybackDirection(p_VectrData->u8PlaybackDirection ^= REVERSE_PLAYBACK);
             break;
     }
 }
@@ -1628,12 +1632,12 @@ pos_and_gesture_data * p_hold_data_struct){
     /*There are behavioral differences for the hold mode depending on which master state
      we are in and whether playback is running or not.
      In live play mode, a received hold command will hold the outputs.*/
-    switch(VectrData.u8OperatingMode){
+    switch(p_VectrData->u8OperatingMode){
         case LIVE_PLAY:
         case RECORDING:
             /*Go through each of the axes and perform the hold behavior for that axis */
             for(i=0; i<NUM_OF_AXES; i++){
-                u8HoldMode = VectrData.u8HoldBehavior[i];
+                u8HoldMode = p_VectrData->u8HoldBehavior[i];
 
                 switch(u8HoldMode){
                     case HOLD:
@@ -1655,7 +1659,7 @@ pos_and_gesture_data * p_hold_data_struct){
         case AIR_SCRATCHING:
         case MUTING:
             for(i=0; i<NUM_OF_AXES; i++){
-                u8HoldMode = VectrData.u8HoldBehavior[i];
+                u8HoldMode = p_VectrData->u8HoldBehavior[i];
                 if(u8PlaybackRunFlag == RUN){
                     /*If playback is running, then the behavior is the same for all except
                      the track/live mode where the output becomes live.*/
@@ -1736,7 +1740,7 @@ void setLivePlayActivationFlag(void){
 void startNewRecording(void){
 
     resetSpeed();
-    VectrData.u8OperatingMode = RECORDING;
+    p_VectrData->u8OperatingMode = RECORDING;
     u8RecordRunFlag = TRUE;
     resetRAMWriteAddress();
     memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
@@ -1752,11 +1756,11 @@ void finishRecording(void){
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
                     
-    if(VectrData.u8Control[PLAY] == TRIGGER_AUTO){
+    if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
         resetRAMReadAddress();
         u8BufferDataCount = 0;
-        VectrData.u8OperatingMode = PLAYBACK;
+        p_VectrData->u8OperatingMode = PLAYBACK;
         u8PlaybackRunFlag = RUN;
         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
     }
@@ -1797,7 +1801,7 @@ void disarmOverdub(void){
 }
 
 void switchStateMachine(void){
-    uint8_t u8OperatingMode = VectrData.u8OperatingMode;
+    uint8_t u8OperatingMode = p_VectrData->u8OperatingMode;
     uint8_t u8NewSwitchState;
 
     //If a switch was pressed or released, handle it
@@ -1811,8 +1815,8 @@ void switchStateMachine(void){
                      * trigger configuration
                      */
                     if(u8SequenceRecordedFlag == TRUE){
-                        if(VectrData.u8Source[PLAY] == SWITCH){
-                            VectrData.u8OperatingMode = PLAYBACK;
+                        if(p_VectrData->u8Source[PLAY] == SWITCH){
+                            p_VectrData->u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
                            // resetRAMReadAddress();//necessary? probably not desirable.
                         }
@@ -1832,9 +1836,9 @@ void switchStateMachine(void){
             case MAIN_SWITCH_PRESSED://LIVE PLAY
                //If we're in menu mode, main switch is exit.
                if(u8MenuModeFlag == FALSE){
-                   if(VectrData.u8Source[RECORD] == SWITCH){
+                   if(p_VectrData->u8Source[RECORD] == SWITCH){
                        resetSpeed();
-                       VectrData.u8OperatingMode = RECORDING;
+                       p_VectrData->u8OperatingMode = RECORDING;
                        u8RecordRunFlag = TRUE;
                        resetRAMWriteAddress();
                        memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
@@ -1871,8 +1875,8 @@ void switchStateMachine(void){
                  * PLAY/EXT/GATE - Arm playback
                  * PLAY/EXT/TRIGGERAUTO - Start playback immediately, stop recording
                  */
-                if(VectrData.u8Source[PLAY] == SWITCH || VectrData.u8Control[PLAY] == TRIGGER_AUTO){
-                    VectrData.u8OperatingMode = PLAYBACK;
+                if(p_VectrData->u8Source[PLAY] == SWITCH || p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
+                    p_VectrData->u8OperatingMode = PLAYBACK;
                     u8PlaybackRunFlag = RUN;
                     resetRAMReadAddress();//Recording ends go to the beginning of the sequence
                 }
@@ -1886,7 +1890,7 @@ void switchStateMachine(void){
                  * REC/EXT/TRIGGER - Arm/disarm recording
                  * REC/EXT/GATE - Arm/disarm recording
                  */
-                if(VectrData.u8Source[RECORD] == SWITCH){
+                if(p_VectrData->u8Source[RECORD] == SWITCH){
                     finishRecording();
                 }
                 else{
@@ -1908,7 +1912,7 @@ void switchStateMachine(void){
                  */
                 /*Switch release only matters for gate record mode.
                   In gate mode, the release of the switch end recording.*/
-                if(VectrData.u8Control[RECORD] == GATE && VectrData.u8Source[RECORD] == SWITCH){
+                if(p_VectrData->u8Control[RECORD] == GATE && p_VectrData->u8Source[RECORD] == SWITCH){
                     finishRecording();
                 }
                 break;
@@ -1927,9 +1931,9 @@ void switchStateMachine(void){
                  * PLAY/EXT/TRIGGERAUTO - Arm/disarm playback
                  */
                 if(u8MenuModeFlag == FALSE){
-                    if(VectrData.u8Source[PLAY] == SWITCH){
-                        if(VectrData.u8PlaybackMode != FLIP &&
-                           VectrData.u8PlaybackMode != RETRIGGER){
+                    if(p_VectrData->u8Source[PLAY] == SWITCH){
+                        if(p_VectrData->u8PlaybackMode != FLIP &&
+                           p_VectrData->u8PlaybackMode != RETRIGGER){
                             if(u8PlaybackRunFlag != RUN){
                                 u8PlaybackRunFlag = RUN;
                             }
@@ -1937,8 +1941,8 @@ void switchStateMachine(void){
                                 u8PlaybackRunFlag = STOP;
                             }
                         }
-                        else if(VectrData.u8PlaybackMode == FLIP){//Flip playback mode
-                            if(VectrData.u8PlaybackDirection == FORWARD_PLAYBACK){
+                        else if(p_VectrData->u8PlaybackMode == FLIP){//Flip playback mode
+                            if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
                                 setPlaybackDirection(REVERSE_PLAYBACK);
                             }
                             else{
@@ -1963,7 +1967,7 @@ void switchStateMachine(void){
                          If recording is not running, we arm it.
                          If the playback mode is flip, then we only arm playback
                          to cause the direction to flip with the next trigger.*/
-                        if(VectrData.u8PlaybackMode != FLIP){
+                        if(p_VectrData->u8PlaybackMode != FLIP){
                             if(u8PlaybackRunFlag == RUN){
                                 disarmPlayback();
                             }
@@ -1986,8 +1990,8 @@ void switchStateMachine(void){
                  * REC/EXT/GATE - Arm recording
                  */
                 if(u8MenuModeFlag == FALSE){
-                    if(VectrData.u8Source[RECORD] == SWITCH){
-                       VectrData.u8OperatingMode = RECORDING;
+                    if(p_VectrData->u8Source[RECORD] == SWITCH){
+                       p_VectrData->u8OperatingMode = RECORDING;
                        u8RecordRunFlag = TRUE;
                        resetRAMWriteAddress(); //Fresh recording
                        memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
@@ -2006,7 +2010,7 @@ void switchStateMachine(void){
             case ENC_SWITCH_RELEASED://PLAYBACK
                 /*Switch release only matters for gate record mode.
                   In gate mode, the release of the switch end recording.*/
-                if(VectrData.u8Control[PLAY] == GATE && VectrData.u8Source[PLAY] == SWITCH){
+                if(p_VectrData->u8Control[PLAY] == GATE && p_VectrData->u8Source[PLAY] == SWITCH){
                     u8PlaybackRunFlag = STOP;
                     setSwitchLEDState(SWITCH_LED_OFF);
                 }
@@ -2021,7 +2025,7 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://OVERDUBBING
                 //Encoder switch press during overdub can start and stop playback
-                if(VectrData.u8Source[OVERDUB] == SWITCH){
+                if(p_VectrData->u8Source[OVERDUB] == SWITCH){
                     u8OverdubRunFlag ^= TRUE;
 
                     if(u8OverdubRunFlag == TRUE){
@@ -2037,7 +2041,7 @@ void switchStateMachine(void){
                 break;
             case MAIN_SWITCH_PRESSED://OVERDUBBING
                 //Main switch press activates/deactivates overdub
-                if(VectrData.u8Source[OVERDUB] == SWITCH){
+                if(p_VectrData->u8Source[OVERDUB] == SWITCH){
                     Flags.u8OverdubActiveFlag ^= TRUE;
                     if(Flags.u8OverdubActiveFlag == TRUE){
                         setLEDAlternateFuncFlag(FALSE);
@@ -2067,7 +2071,7 @@ void switchStateMachine(void){
             case MAIN_SWITCH_RELEASED://OVERDUBBING
                 /*Switch release only matters for gate record mode.
                   In gate mode, the release of the switch end recording.*/
-                if(VectrData.u8Control[OVERDUB] == GATE && VectrData.u8Source[OVERDUB] == SWITCH){
+                if(p_VectrData->u8Control[OVERDUB] == GATE && p_VectrData->u8Source[OVERDUB] == SWITCH){
                     Flags.u8OverdubActiveFlag = FALSE;
                     setSwitchLEDState(SWITCH_LED_OFF);
 
@@ -2085,7 +2089,7 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://SEQUENCING
                 if(u8MenuModeFlag == FALSE){
-                    if(VectrData.u8Source[PLAY] == SWITCH){
+                    if(p_VectrData->u8Source[PLAY] == SWITCH){
                         if(u8PlaybackRunFlag != RUN){
                             u8PlaybackRunFlag = RUN;
                         }
@@ -2229,19 +2233,19 @@ uint8_t decodeDoubleTapGesture(uint16_t u16Data){
 void indicateActiveAxes(uint8_t u8State){
     switch(u8State){
         case OVERDUB:
-            if(VectrData.u8OverdubStatus[X_OUTPUT_INDEX]){
+            if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX]){
                 setLeftLEDs(HALF_BRIGHTNESS, BLINK);
             }
             else{
                 setLeftLEDs(0, OFF);
             }
-            if(VectrData.u8OverdubStatus[Y_OUTPUT_INDEX]){
+            if(p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX]){
                 setTopLEDs(HALF_BRIGHTNESS, BLINK);
             }
             else{
                 setTopLEDs(0, OFF);
             }
-            if(VectrData.u8OverdubStatus[Z_OUTPUT_INDEX]){
+            if(p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX]){
                 setRightLEDs(HALF_BRIGHTNESS, BLINK);
             }
             else{
@@ -2254,7 +2258,7 @@ void indicateActiveAxes(uint8_t u8State){
 }
 
 uint8_t getOverdubStatus(uint8_t u8Axis){
-    return VectrData.u8OverdubStatus[u8Axis];
+    return p_VectrData->u8OverdubStatus[u8Axis];
 }
 
 void setKeyPressFlag(void){
@@ -2270,21 +2274,21 @@ void setMenuModeFlag(uint8_t u8NewMode){
 }
 
 uint8_t getCurrentQuantization(uint8_t u8Index){
-    return VectrData.u16Quantization[u8Index];
+    return p_VectrData->u16Quantization[u8Index];
 }
 
 void setCurrentQuantization(uint8_t u8Index, uint16_t u16CurrentParameter){
-    VectrData.u16Quantization[u8Index] = u16CurrentParameter;
+    p_VectrData->u16Quantization[u8Index] = u16CurrentParameter;
 }
 
 /*This function uses the slew parameter to slow the rate of change of the position*/
 void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
-    uint16_t u16XSlewRate  = VectrData.u16SlewRate[X_OUTPUT_INDEX];
-    uint16_t u16YSlewRate  = VectrData.u16SlewRate[Y_OUTPUT_INDEX];
-    uint16_t u16ZSlewRate  = VectrData.u16SlewRate[Z_OUTPUT_INDEX];
-    uint16_t u16CurrentXPosition = VectrData.u16CurrentXPosition;
-    uint16_t u16CurrentYPosition = VectrData.u16CurrentYPosition;
-    uint16_t u16CurrentZPosition = VectrData.u16CurrentZPosition;
+    uint16_t u16XSlewRate  = p_VectrData->u16SlewRate[X_OUTPUT_INDEX];
+    uint16_t u16YSlewRate  = p_VectrData->u16SlewRate[Y_OUTPUT_INDEX];
+    uint16_t u16ZSlewRate  = p_VectrData->u16SlewRate[Z_OUTPUT_INDEX];
+    uint16_t u16CurrentXPosition = p_VectrData->u16CurrentXPosition;
+    uint16_t u16CurrentYPosition = p_VectrData->u16CurrentYPosition;
+    uint16_t u16CurrentZPosition = p_VectrData->u16CurrentZPosition;
     uint16_t u16NewXPosition,
              u16NewYPosition,
              u16NewZPosition;
@@ -2330,9 +2334,9 @@ void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
         u16NewZPosition = u16CurrentZPosition;
     }
 
-    VectrData.u16CurrentXPosition = u16NewXPosition;
-    VectrData.u16CurrentYPosition = u16NewYPosition;
-    VectrData.u16CurrentZPosition = u16NewZPosition;
+    p_VectrData->u16CurrentXPosition = u16NewXPosition;
+    p_VectrData->u16CurrentYPosition = u16NewYPosition;
+    p_VectrData->u16CurrentZPosition = u16NewZPosition;
     p_pos_and_gesture_struct->u16XPosition = u16NewXPosition;
     p_pos_and_gesture_struct->u16YPosition = u16NewYPosition;
     p_pos_and_gesture_struct->u16ZPosition = u16NewZPosition;
@@ -2345,9 +2349,9 @@ void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
  basically take a fraction of each
  * (32*Linear value + 32*log table value / 64)  = half logarithmic*/
 void linearizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
-    uint16_t u16Linearity[NUM_OF_AXES]  = {  VectrData.u16Linearity[X_OUTPUT_INDEX],
-                                                VectrData.u16Linearity[Y_OUTPUT_INDEX],
-                                                VectrData.u16Linearity[Z_OUTPUT_INDEX]};
+    uint16_t u16Linearity[NUM_OF_AXES]  = {  p_VectrData->u16Linearity[X_OUTPUT_INDEX],
+                                                p_VectrData->u16Linearity[Y_OUTPUT_INDEX],
+                                                p_VectrData->u16Linearity[Z_OUTPUT_INDEX]};
     uint16_t u16CurrentPosition[NUM_OF_AXES] = {p_pos_and_gesture_struct->u16XPosition,
                                         p_pos_and_gesture_struct->u16YPosition,
                                         p_pos_and_gesture_struct->u16ZPosition};
@@ -2418,7 +2422,7 @@ void scaleRange(pos_and_gesture_data * p_pos_and_gesture_struct){
 
         u32temp = u16CurrentPosition[i];
 
-        switch(VectrData.u8Range[i]){
+        switch(p_VectrData->u8Range[i]){
             case RANGE_UNI_5V:
                 u32temp >>= 1;
                 u32temp += ZERO_VOLT_OUTPUT_VALUE;
@@ -2449,31 +2453,31 @@ void scaleRange(pos_and_gesture_data * p_pos_and_gesture_struct){
 }
 
 uint8_t * getDataStructAddress(void){
-    return &VectrData.u8Range[0];
+    return &p_VectrData->u8Range[0];
 }
 
 uint16_t getCurrentRange(uint8_t u8Index){
-    return VectrData.u8Range[u8Index];
+    return p_VectrData->u8Range[u8Index];
 }
 
 void setCurrentRange(uint8_t u8Index, uint8_t u8NewValue){
-    VectrData.u8Range[u8Index] = u8NewValue;
+    p_VectrData->u8Range[u8Index] = u8NewValue;
 }
 
 uint16_t getCurrentLinearity(uint8_t u8Index){
-    return VectrData.u16Linearity[u8Index];
+    return p_VectrData->u16Linearity[u8Index];
 }
 
 void setCurrentLinearity(uint8_t u8Index, uint8_t u8NewValue){
-    VectrData.u16Linearity[u8Index] = u8NewValue;
+    p_VectrData->u16Linearity[u8Index] = u8NewValue;
 }
 
 uint16_t getCurrentSlewRate(uint8_t u8Index){
-    return VectrData.u16SlewRate[u8Index];
+    return p_VectrData->u16SlewRate[u8Index];
 }
 
 void setCurrentSlewRate(uint8_t u8Index, uint8_t u8NewValue){
-    VectrData.u16SlewRate[u8Index] = u8NewValue;
+    p_VectrData->u16SlewRate[u8Index] = u8NewValue;
 }
 
 uint8_t getCurrentTrackBehavior(uint8_t u8Index){
@@ -2486,7 +2490,7 @@ void setCurrentTrackBehavior(uint8_t u8Index, uint8_t u8NewValue){
 
 /*Returns the current source for Record, Playback, or Overdub*/
 uint8_t getCurrentSource(uint8_t u8Parameter){
-    return VectrData.u8Source[u8Parameter];
+    return p_VectrData->u8Source[u8Parameter];
 }
 
 uint8_t setCurrentSource(uint8_t u8Parameter, uint8_t u8NewSetting){
@@ -2494,7 +2498,7 @@ uint8_t setCurrentSource(uint8_t u8Parameter, uint8_t u8NewSetting){
         u8NewSetting = 0;
     }
 
-    VectrData.u8Source[u8Parameter] = u8NewSetting;
+    p_VectrData->u8Source[u8Parameter] = u8NewSetting;
 
     return u8NewSetting;
 }
@@ -2516,41 +2520,41 @@ void setPlaybackRunStatus(uint8_t u8NewState){
 }
 
 uint8_t getCurrentControl(uint8_t u8Index){
-    return VectrData.u8Control[u8Index];
+    return p_VectrData->u8Control[u8Index];
 }
 
 uint8_t setCurrentControl(uint8_t u8Index, uint8_t u8NewSetting){
 
-    VectrData.u8Control[u8Index] = u8NewSetting;
+    p_VectrData->u8Control[u8Index] = u8NewSetting;
 
     return u8NewSetting;
 }
 
 uint8_t getCurrentLoopMode(void){
-    return VectrData.u8PlaybackMode;
+    return p_VectrData->u8PlaybackMode;
 }
 
 void setCurrentLoopMode(uint8_t u8NewSetting){
-    VectrData.u8PlaybackMode = u8NewSetting;
+    p_VectrData->u8PlaybackMode = u8NewSetting;
     if(u8NewSetting == LOOPING){
         setPlaybackDirection(FORWARD_PLAYBACK);
     }
 }
 
 uint8_t getCurrentClockMode(void){
-    return VectrData.u8ClockMode;
+    return p_VectrData->u8ClockMode;
 }
 
 void setCurrentClockMode(uint8_t u8NewSetting){
-    VectrData.u8ClockMode = u8NewSetting;
+    p_VectrData->u8ClockMode = u8NewSetting;
 }
 
 uint8_t getCurrentModulationMode(void){
-    return VectrData.u8ModulationMode;
+    return p_VectrData->u8ModulationMode;
 }
 
 void setCurrentModulationMode(uint8_t u8NewSetting){
-    VectrData.u8ModulationMode = u8NewSetting;
+    p_VectrData->u8ModulationMode = u8NewSetting;
 }
 
 uint8_t getSequenceRecordedFlag(void){
@@ -2562,7 +2566,7 @@ void setSequenceRecordFlag(uint8_t u8NewState){
 }
 
 uint8_t getMuteStatus(uint8_t u8Index){
-    return VectrData.u8MuteState[u8Index];
+    return p_VectrData->u8MuteState[u8Index];
 }
 
 uint8_t getCurrentSequenceIndex(void){
@@ -2570,7 +2574,7 @@ uint8_t getCurrentSequenceIndex(void){
 }
 
 void setNumberOfClockPulses(void){
-    u8NumOfClockPulses = 1 << VectrData.u8ClockMode;
+    u8NumOfClockPulses = 1 << p_VectrData->u8ClockMode;
 }
 
 uint32_t getNextClockPulseIndex(void){
