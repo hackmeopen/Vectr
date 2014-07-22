@@ -668,7 +668,7 @@ void writeFlashFileTable(void){
     eraseFlashFileSector(FLASH_FILE_TABLE_SECTOR);
 
     //Wait until the sector is erased.
-    vTaskDelay(25*TICKS_PER_MS);
+    vTaskDelay(27*TICKS_PER_MS);
 
     flashEnableWrite();
 
@@ -774,6 +774,8 @@ void flashClearWriteProtection(void){
 
     SET_FLASH_SPI_EN;
 
+    vTaskDelay(1);
+
     setDMAState(DMA_FLASH_WRITE_STATUS_REGISTER);
 
     CLEAR_FLASH_SPI_EN;
@@ -781,6 +783,8 @@ void flashClearWriteProtection(void){
     DMARun();
 
     SET_FLASH_SPI_EN;
+
+    vTaskDelay(1);
 
     u8FlashWriteEnabledFlag = TRUE;
 
@@ -854,6 +858,8 @@ void startFileTableWrite(void){
     DMARun();
 
     SET_FLASH_SPI_EN;
+
+    vTaskDelay(1);
 }
 
 void flashReadSector(uint8_t u8Sector){
@@ -912,6 +918,8 @@ void eraseFlashFileSector(uint8_t u8sector){
     DMARun();
 
     SET_FLASH_SPI_EN;
+
+    vTaskDelay(1);
 }
 
 void flashEnableWrite(void){
@@ -922,6 +930,8 @@ void flashEnableWrite(void){
     DMARun();
 
     SET_FLASH_SPI_EN;
+
+    vTaskDelay(1);
 }
 
 void configureRAM(void){

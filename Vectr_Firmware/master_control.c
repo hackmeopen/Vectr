@@ -10,6 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
+//TODO Make sure speed is correct after recording. seems to be fast or something.
 //TODO Test storing and recalling the settings for recorded sequences.
 //TODO Test hold modes
 //TODO Test clock and gate output
@@ -1751,6 +1752,9 @@ void startNewRecording(void){
     memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
     memBuffer.sample_1.u16YPosition = pos_and_gesture_struct.u16YPosition;
     memBuffer.sample_1.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+    memBuffer.sample_2.u16XPosition = pos_and_gesture_struct.u16XPosition;
+    memBuffer.sample_2.u16YPosition = pos_and_gesture_struct.u16YPosition;
+    memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
     setSwitchLEDState(SWITCH_LED_RED_BLINKING);
 }
