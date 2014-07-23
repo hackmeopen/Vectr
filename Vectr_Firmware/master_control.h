@@ -253,7 +253,6 @@ typedef struct{
     uint16_t u16CurrentZPosition;
     uint16_t u16SlewRate[NUMBER_OF_OUTPUTS];
     uint16_t u16Linearity[NUMBER_OF_OUTPUTS];
-    uint8_t u8OperatingMode;//live play, local recording, externally triggered recording
     uint8_t u8Source[NUM_OF_PLAYBACK_SETTINGS];
     uint8_t u8Control[NUM_OF_PLAYBACK_SETTINGS];
     uint8_t u8PlaybackMode;//Looping or whatnot

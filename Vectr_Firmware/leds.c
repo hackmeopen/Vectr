@@ -194,7 +194,7 @@ void ledStateMachine(void){
         }
 
         if(u8IndicateErrorFlag == TRUE){
-            u16_red_LED_duty_cycle = 0;
+            u16_red_LED_duty_cycle = MAX_BRIGHTNESS;
             u8IndicateErrorFlag = FALSE;
         }
 
@@ -423,7 +423,7 @@ uint8_t runPowerUpSequence(void){
 /*Indicate that the system encountered an error condition.*/
 void LEDIndicateError(void){
     u8IndicateErrorFlag = TRUE;
-    u16_red_LED_duty_cycle = MAX_BRIGHTNESS;
+    turnOffAllLEDs();
     u8BlinkTimer = BLINK_TIMER_RESET;
 }
 

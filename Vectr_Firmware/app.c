@@ -233,7 +233,7 @@ void APP_Initialize ( void )
 
 void vTaskMasterControl(void* pvParameters){
 
-    vTaskDelay(1000*TICKS_PER_MS);
+    vTaskDelay(1500*TICKS_PER_MS);
 
     ENABLE_SAMPLE_TIMER_INT;
     ENABLE_PULSE_TIMER_INT;
@@ -255,7 +255,7 @@ void vTaskI2CMGC3130(void * pvParameters){
     resetMGC3130();
     xSemaphoreTake(xSemaphoreMGC3130DataReady,portMAX_DELAY);
     xSemaphoreTake(xSemaphoreI2CHandler,portMAX_DELAY);
-    vTaskDelay(200*TICKS_PER_MS);//Wait for the reset to take effect and the MGC3130 to be running.
+    vTaskDelay(500*TICKS_PER_MS);//Wait for the reset to take effect and the MGC3130 to be running.
     ENABLE_I2C_MGC3130_INT;
     configureMGC3130(msgMGC3130Configure);
     CLEAR_MGC3130_DATA_READY_INT;

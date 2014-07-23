@@ -79,6 +79,7 @@ static uint8_t u8SequenceModeChangeSequenceFlag = FALSE;
 static uint8_t u16ModulationOnFlag = FALSE;
 static uint8_t u8ResetFlag = FALSE;
 static uint8_t u8AirScratchRunFlag = FALSE;
+static uint8_t u8OperatingMode;
 
 static pos_and_gesture_data pos_and_gesture_struct;
 static pos_and_gesture_data * p_mem_pos_and_gesture_struct;
@@ -155,7 +156,7 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct);
 
 void MasterControlInit(void){
 
-    VectrData.u8OperatingMode = LIVE_PLAY;
+    u8OperatingMode = LIVE_PLAY;
     VectrData.u8PlaybackMode = LOOPING;
     VectrData.u8PlaybackDirection = FORWARD_PLAYBACK;
     VectrData.u8PlaybackMode = LOOPING;
@@ -225,7 +226,6 @@ void MasterControlStateMachine(void){
     static uint16_t u16LastAirWheelData;
     int16_t i16AirWheelChange;
     uint8_t u8SampleTimerFlag;//used when the clock is running very slowly to make sure gestures respond
-    uint8_t u8OperatingMode = p_VectrData->u8OperatingMode;
     io_event_message event_message;
     uint8_t u8PlayTrigger = NO_TRIGGER;
     uint8_t u8RecordTrigger = NO_TRIGGER;
@@ -409,7 +409,7 @@ void MasterControlStateMachine(void){
                     u8PlayTrigger = NO_TRIGGER;
                     if(u8SequenceRecordedFlag == TRUE){
                         u8PlaybackArmedFlag = NOT_ARMED;
-                        p_VectrData->u8OperatingMode = PLAYBACK;
+                        u8OperatingMode = PLAYBACK;
                         u8PlaybackRunFlag = RUN;
                     }
                 }
@@ -455,7 +455,7 @@ void MasterControlStateMachine(void){
             else if(u8LivePlayActivationFlag == TRUE){
                 finishRecording();
                 setSwitchLEDState(OFF);
-                p_VectrData->u8OperatingMode = LIVE_PLAY;
+                u8OperatingMode = LIVE_PLAY;
                 u8LivePlayActivationFlag = FALSE;
             }
 
@@ -499,7 +499,7 @@ void MasterControlStateMachine(void){
                     /*Clear the trigger and go to playback.*/
                     u8PlayTrigger = NO_TRIGGER;
                     u8PlaybackArmedFlag = NOT_ARMED;
-                    p_VectrData->u8OperatingMode = PLAYBACK;
+                    u8OperatingMode = PLAYBACK;
                     u8PlaybackRunFlag = RUN;
                 }
             }
@@ -557,7 +557,7 @@ void MasterControlStateMachine(void){
                             }
                             break;
                         case OVERDUB_MODE:
-                            p_VectrData->u8OperatingMode =  OVERDUBBING;
+                            u8OperatingMode =  OVERDUBBING;
                             setLEDAlternateFuncFlag(TRUE);
                             turnOffAllLEDs();
                             setIndicateOverdubModeFlag(TRUE);
@@ -765,7 +765,7 @@ void MasterControlStateMachine(void){
                             Flags.u8OverdubActiveFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateOverdubModeFlag(FALSE);
-                            p_VectrData->u8OperatingMode =  PLAYBACK;
+                            u8OperatingMode =  PLAYBACK;
                             break;
                         case OVERDUB_MODE:
 
@@ -880,7 +880,7 @@ void MasterControlStateMachine(void){
                             Flags.u8SequencingFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
-                            p_VectrData->u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
                             /*Copy the current data structure into the standard local
                              data structure.*/
                             if(getStoredSequenceLocationFlag() != STORED_IN_RAM){
@@ -944,7 +944,7 @@ void MasterControlStateMachine(void){
                             Flags.u8SequencingFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
-                            p_VectrData->u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
                             break;
                         default:
                             break;
@@ -972,9 +972,6 @@ void MasterControlStateMachine(void){
             break;
         case AIR_SCRATCHING:
 
-
-
-
             runAirScratchMode(&pos_and_gesture_struct);
 
             runPlaybackMode();
@@ -985,8 +982,6 @@ void MasterControlStateMachine(void){
 }
 
 void runPlaybackMode(void){
-    uint32_t u32LengthOfSequence;
-    
 
    if(u8PlaybackRunFlag == RUN && u8HoldState == OFF){
 
@@ -1023,8 +1018,8 @@ void runPlaybackMode(void){
         }
         else if(u8LivePlayActivationFlag == TRUE){
             setSwitchLEDState(OFF);
-            if(p_VectrData->u8OperatingMode != SEQUENCING){
-                p_VectrData->u8OperatingMode = LIVE_PLAY;
+            if(u8OperatingMode != SEQUENCING){
+                u8OperatingMode = LIVE_PLAY;
             }
             u8LivePlayActivationFlag = FALSE;
         }
@@ -1176,7 +1171,7 @@ void calculateNextClockPulse(void){
 }
 
 void enterOverdubMode(void){
-    p_VectrData->u8OperatingMode =  OVERDUBBING;
+    u8OperatingMode =  OVERDUBBING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
     setIndicateOverdubModeFlag(TRUE);
@@ -1185,12 +1180,12 @@ void enterOverdubMode(void){
 }
 
 void enterAirScratchMode(void){
-    p_VectrData->u8OperatingMode = AIR_SCRATCHING;
+    u8OperatingMode = AIR_SCRATCHING;
     Flags.u8AirScratchFlag = FALSE;
 }
 
 void enterMuteMode(void){
-    p_VectrData->u8OperatingMode = MUTING;
+    u8OperatingMode = MUTING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
     setIndicateMuteModeFlag(TRUE);
@@ -1223,7 +1218,7 @@ void enterSequencerMode(void){
     /*If at least one sequence is recorded, go to sequence mode, otherwise
      * indicate an error*/
     if(atLeastOneSequenceRecordedFlag == TRUE){
-        p_VectrData->u8OperatingMode = SEQUENCING;
+        u8OperatingMode = SEQUENCING;
         Flags.u8SequencingFlag = FALSE;
         setLEDAlternateFuncFlag(TRUE);
         turnOffAllLEDs();
@@ -1638,7 +1633,7 @@ pos_and_gesture_data * p_hold_data_struct){
     /*There are behavioral differences for the hold mode depending on which master state
      we are in and whether playback is running or not.
      In live play mode, a received hold command will hold the outputs.*/
-    switch(p_VectrData->u8OperatingMode){
+    switch(u8OperatingMode){
         case LIVE_PLAY:
         case RECORDING:
             /*Go through each of the axes and perform the hold behavior for that axis */
@@ -1746,7 +1741,7 @@ void setLivePlayActivationFlag(void){
 void startNewRecording(void){
 
     resetSpeed();
-    p_VectrData->u8OperatingMode = RECORDING;
+    u8OperatingMode = RECORDING;
     u8RecordRunFlag = TRUE;
     resetRAMWriteAddress();
     memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
@@ -1769,7 +1764,7 @@ void finishRecording(void){
         //Initiate a read.
         resetRAMReadAddress();
         u8BufferDataCount = 0;
-        p_VectrData->u8OperatingMode = PLAYBACK;
+        u8OperatingMode = PLAYBACK;
         u8PlaybackRunFlag = RUN;
         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
     }
@@ -1810,7 +1805,6 @@ void disarmOverdub(void){
 }
 
 void switchStateMachine(void){
-    uint8_t u8OperatingMode = p_VectrData->u8OperatingMode;
     uint8_t u8NewSwitchState;
 
     //If a switch was pressed or released, handle it
@@ -1825,7 +1819,7 @@ void switchStateMachine(void){
                      */
                     if(u8SequenceRecordedFlag == TRUE){
                         if(p_VectrData->u8Source[PLAY] == SWITCH){
-                            p_VectrData->u8OperatingMode = PLAYBACK;
+                            u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
                            // resetRAMReadAddress();//necessary? probably not desirable.
                         }
@@ -1846,15 +1840,8 @@ void switchStateMachine(void){
                //If we're in menu mode, main switch is exit.
                if(u8MenuModeFlag == FALSE){
                    if(p_VectrData->u8Source[RECORD] == SWITCH){
-                       resetSpeed();
-                       p_VectrData->u8OperatingMode = RECORDING;
-                       u8RecordRunFlag = TRUE;
-                       resetRAMWriteAddress();
-                       memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
-                       memBuffer.sample_1.u16YPosition = pos_and_gesture_struct.u16YPosition;
-                       memBuffer.sample_1.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
-                       u8BufferDataCount = 1;
-                       setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+                       u8OperatingMode = RECORDING;
+                       startNewRecording();
                    }else{
                        //Go to record mode and wait for the trigger?
                        armRecording();
@@ -1885,7 +1872,7 @@ void switchStateMachine(void){
                  * PLAY/EXT/TRIGGERAUTO - Start playback immediately, stop recording
                  */
                 if(p_VectrData->u8Source[PLAY] == SWITCH || p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
-                    p_VectrData->u8OperatingMode = PLAYBACK;
+                    u8OperatingMode = PLAYBACK;
                     u8PlaybackRunFlag = RUN;
                     resetRAMReadAddress();//Recording ends go to the beginning of the sequence
                 }
@@ -2000,14 +1987,8 @@ void switchStateMachine(void){
                  */
                 if(u8MenuModeFlag == FALSE){
                     if(p_VectrData->u8Source[RECORD] == SWITCH){
-                       p_VectrData->u8OperatingMode = RECORDING;
-                       u8RecordRunFlag = TRUE;
-                       resetRAMWriteAddress(); //Fresh recording
-                       memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
-                       memBuffer.sample_1.u16YPosition = pos_and_gesture_struct.u16YPosition;
-                       memBuffer.sample_1.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
-                       u8BufferDataCount = 1;
-                       setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+                       u8OperatingMode = RECORDING;
+                       startNewRecording();
                     }else{
                        armPlayback();
                     }
@@ -2145,8 +2126,9 @@ void switchStateMachine(void){
 
 void resetSpeed(void){
     i16PlaybackData = 0;
-    u32PlaybackSpeed = STANDARD_PLAYBACK_SPEED;
-    SET_SAMPLE_TIMER_PERIOD(STANDARD_PLAYBACK_SPEED);
+    u16PlaybackSpeedTableIndex = ZERO_SPEED_INDEX;
+    u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
+    SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
     RESET_SAMPLE_TIMER;
 }
 
