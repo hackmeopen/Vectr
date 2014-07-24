@@ -318,7 +318,7 @@ uint8_t flashStoreSequence(uint8_t u8SequenceIndex, uint32_t u32SequenceLength){
 
     while(u32RemainingSequenceBytes != 0){
 
-        u32RAMReadAddress = u8SectorsWritten*FLASH_SECTOR_SIZE;
+        u32RAMReadAddress = u8SectorsWritten*FLASH_UTILIZED_SECTOR_SIZE;
 
         //Stop playback if it's running.
         u8PlaybackRunStatus = getPlaybackRunStatus();
@@ -342,11 +342,11 @@ uint8_t flashStoreSequence(uint8_t u8SequenceIndex, uint32_t u32SequenceLength){
 
         //Check to see if this is the last sector.
         //Determine the end of the write in Flash
-        if(u32RemainingSequenceBytes > FLASH_SECTOR_SIZE){
-            p_u8EndOfData = &LoadStoreBuffer.u8LoadStoreBuffer[0] + FLASH_SECTOR_SIZE;
-            u32BytesWritten += FLASH_SECTOR_SIZE;
-            u32RemainingSequenceBytes -= FLASH_SECTOR_SIZE;
-            ftFileTable.flash_file_table[u8CurrentSector].u32FileLength = FLASH_SECTOR_SIZE;
+        if(u32RemainingSequenceBytes > FLASH_UTILIZED_SECTOR_SIZE){
+            p_u8EndOfData = &LoadStoreBuffer.u8LoadStoreBuffer[0] + FLASH_UTILIZED_SECTOR_SIZE;
+            u32BytesWritten += FLASH_UTILIZED_SECTOR_SIZE;
+            u32RemainingSequenceBytes -= FLASH_UTILIZED_SECTOR_SIZE;
+            ftFileTable.flash_file_table[u8CurrentSector].u32FileLength = FLASH_UTILIZED_SECTOR_SIZE;
         }
         else{
             u8RemainderBytes = u32RemainingSequenceBytes%NUMBER_OF_DATA_BYTES;
@@ -448,14 +448,14 @@ uint8_t flashLoadSequence(uint8_t u8SequenceIndex){
         //Now write it to RAM
         ramWriteSector(u32Address);
         
-        u32Address += FLASH_SECTOR_SIZE;
+        u32Address += FLASH_UTILIZED_SECTOR_SIZE;
 
         if(u32Address > u32SequenceLength){
             u32SequenceLength = 0;
         }
         else
         {
-            u32SequenceLength -= FLASH_SECTOR_SIZE;
+            u32SequenceLength -= FLASH_UTILIZED_SECTOR_SIZE;
         }
 
         u8CurrentSector++;

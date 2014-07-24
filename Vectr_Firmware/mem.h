@@ -61,6 +61,7 @@ enum{
 /*Flash Definitions*/
 #define FLASH_TOTAL_SIZE    0x1FFFF
 #define FLASH_SECTOR_SIZE   0x1000
+#define FLASH_UTILIZED_SECTOR_SIZE 0xFFC //The last 4 bytes don't fit with the packet size
 #define BITS_OF_MEMORY_SECTOR_SIZE  12
 #define LENGTH_OF_FLASH_ADDRESS     3
 #define FIRST_STORAGE_SECTOR_INDEX  1
