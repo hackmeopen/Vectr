@@ -10,8 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO For some reason writes to flash are 8 bytes short of the full length.
-//TODO Test storing and recalling the settings for recorded sequences.
+//TODO Test - For some reason writes to flash are 8 bytes short of the full length.
 //TODO Test hold modes
 //TODO Test clock and gate output
 //TODO Test Mute Mode
@@ -23,7 +22,6 @@
 //TODO Test Ramp Output
 //TODO Test Air Scratch - change speed and direction
 //TODO Dismiss a hold or live play activation during sequence mode - Test this - maybe more null checking?
-//TODO Make sure nothing bad happens when gestures are made at startup.
 //TODO Test jack detection with final sample
 //TODO Test with 512k RAM with final sample
 
@@ -143,7 +141,6 @@ void linearizePosition(pos_and_gesture_data * p_pos_and_gesture_struct);
 void gateHandler(void);
 void holdHandler(pos_and_gesture_data * p_position_data_struct, pos_and_gesture_data * p_memory_data_struct,
 pos_and_gesture_data * p_hold_data_struct);
-void clockHandler(uint32_t u32CurrentRAMAddress);
 uint16_t scaleBinarySearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
 void runPlaybackMode(void);
 void mutePosition(pos_and_gesture_data * p_pos_and_gesture_struct);
@@ -1164,10 +1161,18 @@ void calculateRampOutput(pos_and_gesture_data * p_pos_and_gesture_struct){
     }
 }
 
+/*Clock pulses are generated in the sample timer routine. The only thing that's needed to know
+ is the number of memory bytes used between steps. Options are 1,2,4,8,16*/
 void calculateNextClockPulse(void){
     uint32_t u32LengthOfSequence = getActiveSequenceLength();
-    
-    u32NextClockPulseIndex = u32LengthOfSequence>>(1<<p_VectrData->u8ClockMode);
+    uint8_t u8Shift = 0;
+    uint8_t u8ClockMode = p_VectrData->u8ClockMode;
+
+    if(u8ClockMode > 0){
+        u8Shift = 1<<(u8ClockMode-1);
+    }
+
+    u32NextClockPulseIndex = u32LengthOfSequence>>u8Shift;
 }
 
 void enterOverdubMode(void){
