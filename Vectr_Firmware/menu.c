@@ -588,8 +588,8 @@ void editLoadStoreParameter(void){
                 u8LoadStoreParameter = 0;
             }
         }else{
-            while(u8LoadStoreActivePositions[u8LoadStoreParameter] != TRUE){
-                if(++u8LoadStoreParameter >= MAX_NUM_OF_LOAD_STORE_LOCATIONS){
+            while(u8LoadStoreActivePositions[++u8LoadStoreParameter] != TRUE){
+                if(u8LoadStoreParameter >= MAX_NUM_OF_LOAD_STORE_LOCATIONS){
                     u8LoadStoreParameter = 0;
                 }
             }

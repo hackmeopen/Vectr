@@ -10,7 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Make sure speed is correct after recording. seems to be fast or something.
+//TODO For some reason writes to flash are 8 bytes short of the full length.
 //TODO Test storing and recalling the settings for recorded sequences.
 //TODO Test hold modes
 //TODO Test clock and gate output

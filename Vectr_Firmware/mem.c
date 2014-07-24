@@ -401,7 +401,7 @@ uint8_t flashStoreSequence(uint8_t u8SequenceIndex, uint32_t u32SequenceLength){
     ftFileTable.u32SequenceLengthTable[u8SequenceIndex] =  u32BytesWritten;
 
     //Copy the current settings to the table.
-    copyCurrentSettingsToFileTable(u8SequenceIndex);
+    copyCurrentSettingsToFileTable(u8SequenceIndex+1);//The zero storage is default. Add 1.
 
     //Write the updated file table.
     writeFlashFileTable();
@@ -462,10 +462,10 @@ uint8_t flashLoadSequence(uint8_t u8SequenceIndex){
     }
 
     //Load the settings for the recorded sequence.
-    loadSettingsFromFileTable(u8SequenceIndex);
+    loadSettingsFromFileTable(u8SequenceIndex+1);
 
     //Set the end of recording address.
-    u32SequenceEndAddress = ftFileTable.u32SequenceLengthTable[u8SequenceIndex];
+    u32SequenceEndAddress = ftFileTable.u32SequenceLengthTable[u8SequenceIndex];//Offset for the default
 
     setPlaybackRunStatus(u8PlaybackRunStatus);//Put playback in the state it was in.
 
@@ -895,6 +895,8 @@ void startFlashSectorWrite(uint8_t u8Sector, uint8_t u8FirstDataByte){
     DMARun();
 
     SET_FLASH_SPI_EN;
+
+    vTaskDelay(1);
 }
 
 void eraseFlashFileSector(uint8_t u8sector){
