@@ -10,7 +10,6 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Test - For some reason writes to flash are 8 bytes short of the full length.
 //TODO Test hold modes
 //TODO Test clock and gate output
 //TODO Test Mute Mode
@@ -585,22 +584,28 @@ void MasterControlStateMachine(void){
                 }
                 /*Playback - Airwheel adjust speed.*/
                 u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
-                if(u16AirwheelData != u16LastAirWheelData){
-                    if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
-                        i16AirWheelChange = u16AirwheelData - u16LastAirWheelData;
 
-                        //If the data decremented past zero, the new data minus the old will be large.
-                        if(i16AirWheelChange > 127){
-                            i16AirWheelChange = u16LastAirWheelData - (256 - u16AirwheelData);
-                        }
+                if(u8HoldState != ON){
+                    if(u16AirwheelData != u16LastAirWheelData){
+                        if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
+                            i16AirWheelChange = u16AirwheelData - u16LastAirWheelData;
 
-                        //If the data incremented past zero, the data will be large and negative
-                        if(i16AirWheelChange < -127){
-                            i16AirWheelChange = u16AirwheelData + (256 - u16LastAirWheelData);
+                            //If the data decremented past zero, the new data minus the old will be large.
+                            if(i16AirWheelChange > 127){
+                                i16AirWheelChange = u16LastAirWheelData - (256 - u16AirwheelData);
+                            }
+
+                            //If the data incremented past zero, the data will be large and negative
+                            if(i16AirWheelChange < -127){
+                                i16AirWheelChange = u16AirwheelData + (256 - u16LastAirWheelData);
+                            }
+
+                            adjustSpeedTable(i16AirWheelChange);
                         }
-                   
-                        adjustSpeedTable(i16AirWheelChange);
+                        u16LastAirWheelData = u16AirwheelData;
                     }
+                }else{
+                    //Don't adjust speed during a hold
                     u16LastAirWheelData = u16AirwheelData;
                 }
 
@@ -924,6 +929,10 @@ void MasterControlStateMachine(void){
                     }
                 }
             }
+
+            /*Sequencing - Keep track of airwheel data but don't do anything about it*/
+            u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
+            u16LastAirWheelData = u16AirwheelData;
             break;
         case MUTING:
             if(u8SampleTimerFlag == TRUE && u8SequenceRecordedFlag == TRUE){
@@ -966,12 +975,20 @@ void MasterControlStateMachine(void){
                         }
                 }
             }
+
+            /*Keep track of airwheel data but don't do anything about it*/
+            u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
+            u16LastAirWheelData = u16AirwheelData;
             break;
         case AIR_SCRATCHING:
 
             runAirScratchMode(&pos_and_gesture_struct);
 
             runPlaybackMode();
+
+            /*Keep track of airwheel data but don't do anything about it*/
+            u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
+            u16LastAirWheelData = u16AirwheelData;
             break;
         default:
             break;
@@ -1669,7 +1686,10 @@ pos_and_gesture_data * p_hold_data_struct){
                 if(u8PlaybackRunFlag == RUN){
                     /*If playback is running, then the behavior is the same for all except
                      the track/live mode where the output becomes live.*/
-                    if(u8HoldMode != TRACKLIVE){
+                    if(u8HoldMode == ZERO){
+                        *(p_u16MemoryPosition + i) = 0;
+                    }
+                    else if(u8HoldMode != TRACKLIVE){
                         *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
                     }
                     else{
@@ -1686,12 +1706,15 @@ pos_and_gesture_data * p_hold_data_struct){
                             *(p_u16MemoryPosition + i) = *(p_u16Position + i);
                             break;
                         case ZERO:
-                            *(p_u16Position + i) = 0;
+                            *(p_u16MemoryPosition + i) = 0;
                             break;
                         case ENVELOPE_ZERO:
                             /*If playback has ended, then 0V, otherwise, do nothing.*/
                             if(u8PlaybackRunFlag == ENDED){
-                                *(p_u16Position + i) = 0;
+                              *(p_u16MemoryPosition + i) = 0;
+                            }
+                            else{
+                              *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
                             }
                             break;
                         default:
@@ -2477,11 +2500,11 @@ void setCurrentSlewRate(uint8_t u8Index, uint8_t u8NewValue){
 }
 
 uint8_t getCurrentTrackBehavior(uint8_t u8Index){
-
+    return p_VectrData->u8HoldBehavior[u8Index];
 }
 
 void setCurrentTrackBehavior(uint8_t u8Index, uint8_t u8NewValue){
-
+    p_VectrData->u8HoldBehavior[u8Index] = u8NewValue;
 }
 
 /*Returns the current source for Record, Playback, or Overdub*/
