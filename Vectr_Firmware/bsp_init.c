@@ -111,10 +111,9 @@ void BSP_Initialize(void )
     PLIB_TMR_Start(SAMPLE_TIMER);
 
     /*Turn on the timer for pulse timing.*/
-    PLIB_TMR_PrescaleSelect(PULSE_TIMER_ID, PULSE_TIMER_PRESCALE);
-    PLIB_TMR_ClockSourceSelect(PULSE_TIMER_ID, TMR_CLOCK_SOURCE_PERIPHERAL_CLOCK);
-    PLIB_TMR_Period16BitSet(PULSE_TIMER_ID, PULSE_TIMER_PERIOD);
-    PLIB_TMR_Start(PULSE_TIMER_ID);
+    PLIB_TMR_PrescaleSelect(CLOCK_TIMER_ID, CLOCK_TIMER_PRESCALE);
+    PLIB_TMR_ClockSourceSelect(CLOCK_TIMER_ID, TMR_CLOCK_SOURCE_PERIPHERAL_CLOCK);
+    PLIB_TMR_Period16BitSet(CLOCK_TIMER_ID, CLOCK_TIMER_PERIOD);
 
     /*Turn on the Timer 2 for the LED PWM*/
     PLIB_TMR_PrescaleSelect(LED_TIMER_ID, TMR_PRESCALE_VALUE_1);

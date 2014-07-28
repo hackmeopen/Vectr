@@ -10,8 +10,9 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Figure out the Flash Reset point
-//TODO Test Effects
+//TODO The clock calculation must be performed whenever the sequence length is adjusted.
+//TODO What to do with the clock timer during scrub mode? Turn it off and trigger the clock some other way.
+//TODO Test Effects - Test scrub clocks and with flash
 //TODO Test slew rate menu adjustment
 //TODO Test Air Scratch - change speed and direction
 //TODO Test jack detection with final sample
@@ -108,6 +109,15 @@ static uint32_t u32PlaybackSpeed = STANDARD_PLAYBACK_SPEED;//Number of speed inc
 static int16_t i16PlaybackData = 0;
 static uint16_t u16PlaybackSpeedTableIndex = INITIAL_SPEED_INDEX;
 
+const uint16_t u16PrescaleValues[8] = {TMR_PRESCALE_VALUE_1,
+TMR_PRESCALE_VALUE_2,
+TMR_PRESCALE_VALUE_4,
+TMR_PRESCALE_VALUE_8,
+TMR_PRESCALE_VALUE_16,
+TMR_PRESCALE_VALUE_32,
+TMR_PRESCALE_VALUE_64,
+TMR_PRESCALE_VALUE_256};
+
 void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct);
 void scaleRange(pos_and_gesture_data * p_pos_and_gesture_struct);
 uint8_t decodeXYZTouchGesture(uint16_t u16Data);
@@ -137,6 +147,7 @@ void adjustSpeedModulation(uint16_t u16NewValue);
 void setNumberOfClockPulses(void);
 uint32_t calculateRampOutput(void);
 void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct);
+void calculateClockTimer(uint32_t u32PlaybackSpeed);
 
 void MasterControlInit(void){
 
@@ -265,11 +276,19 @@ void MasterControlStateMachine(void){
                u8SyncTrigger = event_message.u8message;
                break;
            case JACK_DETECT_IN_EVENT:
+               /*If the modulation mode is SCRUB, we disable the clock timer and
+                 otherwise, it's enabled.*/
                if(event_message.u8message == 1){
                    u16ModulationOnFlag = FALSE;
+                   if(p_VectrData->u8ModulationMode == SCRUB){
+                       setClockEnableFlag(TRUE);
+                   }
                }
                else{
                    u16ModulationOnFlag = TRUE;
+                   if(p_VectrData->u8ModulationMode == SCRUB){
+                       setClockEnableFlag(FALSE);
+                   }
                }
            default:
                break;
@@ -1168,7 +1187,7 @@ uint32_t calculateRampOutput(void){
  is the number of memory bytes used between steps. Options are 1,2,4,8,16*/
 uint32_t calculateNextClockPulse(void){
     static uint8_t u8RoundFlag = 0;
-    uint32_t u32LengthOfSequence = getActiveSequenceLength() - 12;
+    uint32_t u32LengthOfSequence = getActiveSequenceLength();
     uint8_t u8ClockMode = p_VectrData->u8ClockMode;
     uint8_t u8Modulus;
 
@@ -1188,6 +1207,49 @@ uint32_t calculateNextClockPulse(void){
     }
 
     return u32NextClockPulseIndex;
+}
+
+/*The clock timer creates the clock pulses. The regular sample timer can't be
+ used because the resolution is too poor. With this routine, we run the clock timer
+ at a multiple faster than the regular timer and count up to a number to trigger
+ the correct to get more accurate timing.*/
+void calculateClockTimer(uint32_t u32PlaybackSpeed){
+
+    uint32_t u32LengthOfSequence = getActiveSequenceLength()/6;
+
+    uint8_t u8ClockMode = p_VectrData->u8ClockMode;//Clock pulses per cycle
+    uint32_t u32ClockSpeed = u32PlaybackSpeed;//How fast does the clock have to run?
+    uint16_t u16Multiple = 3;//Run at least 8x faster than the sample clock
+    uint32_t u32ClockTimerTriggerCount;
+    
+    /*The clock needs to run at a multiple of the frequency of the
+     regular sample clock, but not any faster than necessary. The longest the
+     clock can be is 65535 because it is 16 bit. We start with 16x faster. If that's
+     not fast enough, we increase it to 32x, or 64x.
+     For example: the sample timer is running at 399999 counts per sample.
+     The clock timer will run at 8x this speed at 49999 counts per cycle.
+     */
+    u32ClockSpeed >>= u16Multiple;
+    while(u32ClockSpeed > MAX_CLOCK_TIMER_SPEED){
+        u16Multiple++;
+        u32ClockSpeed >>= 1;
+    }
+    
+    /*Since the clock timer will be running at a multiple faster than the sample timer. It must 
+     count to a number higher by that multiple to get the correct number of cycles to trigger
+     the clock pulse.
+     This gives us the length of the cycle in terms of the speed of the clock timer.*/
+    u32ClockTimerTriggerCount = u32LengthOfSequence * u16Multiple;
+
+    /*Now, divide by the number of clock pulses per cycle.
+     This is the number we must count up to in the interrupt routine.*/
+    u32ClockTimerTriggerCount >>= u8ClockMode;
+
+    setClockTimerTriggerCount(u32ClockTimerTriggerCount);
+
+    SET_CLOCK_TIMER_PERIOD(u32ClockSpeed);
+    RESET_CLOCK_TIMER;
+
 }
 
 void clearNextClockPulseIndex(void){
@@ -1438,107 +1500,123 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
     uint16_t u16Attenuation;
     uint16_t u16CurrentPosition[NUM_OF_AXES];
     uint32_t u32PositionTemp;
+    uint16_t u16Divisor;
+    uint16_t u16Modulus;
     int i;
 
     /*Get the ADC data and make some change based on it.*/
     if(xQueueReceive(xADCQueue, &u16ADCData, 0)){
-        switch(p_VectrData->u8ModulationMode){
-            case SPEED:
-                adjustSpeedModulation(u16ADCData>>2);
-                break;
-            case QUANTIZED_SPEED:
-                //There are 16 speeds. Reduce down to 4 bits.
-                u16Temp = u16ADCData>>8;
-                u32PlaybackSpeed = u32QuantizedSpeedTable[u16Temp];
-                SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-                RESET_SAMPLE_TIMER;
-                break;
-            case SCRUB:
-                /*Play the sequence with CV. We must know the length
-                 * of the sequence. Then we can scale to a memory location and set that
-                 * as the next read location.
-                 * With RAM this is straightforward.
-                 * For Flash, the location has to be translated to a sector.
-                 * If the ADC value went down, then playback is going backwards.
-                 * If the ADC value went up, then the playback is going forwards.
-                 */
+        if(u16ADCData != u16LastADCData){
+            switch(p_VectrData->u8ModulationMode){
+                case SPEED:
+                    adjustSpeedModulation(u16ADCData>>2);
+                    break;
+                case QUANTIZED_SPEED:
+                    //There are 16 speeds. Reduce down to 4 bits.
+                    u16Temp = u16ADCData>>8;
+                    u32PlaybackSpeed = u32QuantizedSpeedTable[u16Temp];
+                    SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+                    RESET_SAMPLE_TIMER;
+                    /*Adjust the clock timer accordingly.*/
+                    calculateClockTimer(u32PlaybackSpeed);
+                    break;
+                case SCRUB:
+                    /*Play the sequence with CV. We must know the length
+                     * of the sequence. Then we can scale to a memory location and set that
+                     * as the next read location.
+                     * With RAM this is straightforward.
+                     * For Flash, the location has to be translated to a sector.
+                     * If the ADC value went down, then playback is going backwards.
+                     * If the ADC value went up, then the playback is going forwards.
+                     */
 
-                if(u16LastADCData < u16ADCData){
-                    setPlaybackDirection(REVERSE_PLAYBACK);
-                }
-                else{
-                    setPlaybackDirection(FORWARD_PLAYBACK);
-                }
-
-                u32SequenceLength = getActiveSequenceLength();
-
-                /*The new sequence position is the determined by the ADC reading.*/
-                u32NewReadAddress = u32SequenceLength*u16ADCData;
-                u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
-
-                /*Set the new read position.*/
-                setNewReadAddress(u32NewReadAddress);
-
-                break;
-            case TRIM:
-                /*0-5V We need to know the total length of the sequence, not
-                 * the modified length.
-                 * 0V trims the end all the way to the beginning.
-                 * 5V trims the end all the way to the end.
-                 * Linear in between.
-                 */
-                u32SequenceLength = getActiveSequenceLength();
-                u32NewSequenceEndAddress = u32SequenceLength*u16ADCData;
-                u32NewSequenceEndAddress >>= 12;//ADC has 4096 levels, 12 bits.
-
-                /*Set the new end.*/
-                setNewSequenceEndAddress(u32NewSequenceEndAddress);
-
-                break;
-            case MIRROR:
-                /*OV = No modification.
-                 2.5V = Maximum attenuation.
-                 5V = Total inversion.
-                 So the amount of attenuation depends on how close to 2.5V
-                 and the inversion happens at 2.5V.
-                 For each axis.*/
-                u16CurrentPosition[0] = p_pos_and_gesture_struct->u16XPosition;
-                u16CurrentPosition[1] = p_pos_and_gesture_struct->u16YPosition;
-                u16CurrentPosition[2] = p_pos_and_gesture_struct->u16ZPosition;
-
-                if(u16ADCData > HALF_ADC_VALUE){
-                    u8InversionFlag = TRUE;
-                    u16Attenuation = u16ADCData - HALF_ADC_VALUE;
-                }
-                else{
-                    u8InversionFlag = FALSE;
-                    u16Attenuation = HALF_ADC_VALUE - u16ADCData;//Attenuate less toward the bottom.
-                }
-
-                for(i=0; i<NUM_OF_AXES;i++){
-                    u32PositionTemp = u16CurrentPosition[i];
-                    u32PositionTemp *= u16Attenuation;
-                    u32PositionTemp >>= 12;
-                    if(u8InversionFlag == TRUE){
-                        u32PositionTemp = MAXIMUM_OUTPUT_VALUE - u32PositionTemp;
+                    if(u16LastADCData < u16ADCData){
+                        setPlaybackDirection(REVERSE_PLAYBACK);
                     }
-                    u16CurrentPosition[i] = u32PositionTemp;
+                    else{
+                        setPlaybackDirection(FORWARD_PLAYBACK);
+                    }
 
-                }
+                    u32SequenceLength = getActiveSequenceLength();
 
-                p_pos_and_gesture_struct->u16XPosition = u16CurrentPosition[0];
-                p_pos_and_gesture_struct->u16YPosition = u16CurrentPosition[1];
-                p_pos_and_gesture_struct->u16ZPosition = u16CurrentPosition[2];
+                    /*The new sequence position is the determined by the ADC reading.*/
+                    u32NewReadAddress = u32SequenceLength*u16ADCData;
+                    u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
 
-                break;
-            default:
-                break;
+                    /*Check if it's time for a clock pulse.*/
+                    u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
+                    u16Modulus = u32NewReadAddress%u16Divisor;
+                    if(u16Modulus <= 3){
+                        SET_LOOP_SYNC_OUT;
+                    }
+                    else{
+                        CLEAR_LOOP_SYNC_OUT;
+                    }
+
+                    /*Set the new read position.*/
+                    setNewReadAddress(u32NewReadAddress);
+
+                    break;
+                case TRIM:
+                    /*0-5V We need to know the total length of the sequence, not
+                     * the modified length.
+                     * 0V trims the end all the way to the beginning.
+                     * 5V trims the end all the way to the end.
+                     * Linear in between.
+                     */
+                    u32SequenceLength = getActiveSequenceLength();
+                    u32NewSequenceEndAddress = u32SequenceLength*u16ADCData;
+                    u32NewSequenceEndAddress >>= 12;//ADC has 4096 levels, 12 bits.
+
+                    /*Set the new end.*/
+                    setNewSequenceEndAddress(u32NewSequenceEndAddress);
+
+                    /*Adjust the clock timer accordingly.*/
+                    calculateClockTimer(u32PlaybackSpeed);
+
+                    break;
+                case MIRROR:
+                    /*OV = No modification.
+                     2.5V = Maximum attenuation.
+                     5V = Total inversion.
+                     So the amount of attenuation depends on how close to 2.5V
+                     and the inversion happens at 2.5V.
+                     For each axis.*/
+                    u16CurrentPosition[0] = p_pos_and_gesture_struct->u16XPosition;
+                    u16CurrentPosition[1] = p_pos_and_gesture_struct->u16YPosition;
+                    u16CurrentPosition[2] = p_pos_and_gesture_struct->u16ZPosition;
+
+                    if(u16ADCData > HALF_ADC_VALUE){
+                        u8InversionFlag = TRUE;
+                        u16Attenuation = u16ADCData - HALF_ADC_VALUE;
+                    }
+                    else{
+                        u8InversionFlag = FALSE;
+                        u16Attenuation = HALF_ADC_VALUE - u16ADCData;//Attenuate less toward the bottom.
+                    }
+
+                    for(i=0; i<NUM_OF_AXES;i++){
+                        u32PositionTemp = u16CurrentPosition[i];
+                        u32PositionTemp *= u16Attenuation;
+                        u32PositionTemp >>= 12;
+                        if(u8InversionFlag == TRUE){
+                            u32PositionTemp = MAXIMUM_OUTPUT_VALUE - u32PositionTemp;
+                        }
+                        u16CurrentPosition[i] = u32PositionTemp;
+
+                    }
+
+                    p_pos_and_gesture_struct->u16XPosition = u16CurrentPosition[0];
+                    p_pos_and_gesture_struct->u16YPosition = u16CurrentPosition[1];
+                    p_pos_and_gesture_struct->u16ZPosition = u16CurrentPosition[2];
+
+                    break;
+                default:
+                    break;
+            }
+
+            u16LastADCData = u16ADCData;
         }
-
-        u16LastADCData = u16ADCData;
-      
-
-
     }
 
 }
@@ -2172,6 +2250,7 @@ void resetSpeed(void){
     u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
     SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
     RESET_SAMPLE_TIMER;
+    calculateClockTimer(u32PlaybackSpeed);
 }
 
 /*Adjust the playback speed. One revolution will */
@@ -2210,6 +2289,9 @@ void adjustSpeedTable(int16_t i16AirwheelData){
         u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
         SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
         RESET_SAMPLE_TIMER;
+
+        /*Adjust the clock timer accordingly.*/
+        calculateClockTimer(u32PlaybackSpeed);
     }
 }
 
@@ -2218,6 +2300,9 @@ void adjustSpeedModulation(uint16_t u16NewValue){
     u32PlaybackSpeed = u32LogSpeedTable[u16NewValue];
     SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
     RESET_SAMPLE_TIMER;
+
+    /*Adjust the clock timer accordingly.*/
+    calculateClockTimer(u32PlaybackSpeed);
 }
 
 uint8_t decodeXYZTouchGesture(uint16_t u16Data){
@@ -2543,12 +2628,14 @@ uint8_t getPlaybackRunStatus(void){
 void setPlaybackRunStatus(uint8_t u8NewState){
     u8PlaybackRunFlag = u8NewState;
 
-    //Turn the switch LED on or off
+    //Turn the switch LED on or off and start the clock timer or stop it
     if(u8PlaybackRunFlag == TRUE){
         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        START_CLOCK_TIMER;
     }
     else{
         setSwitchLEDState(SWITCH_LED_OFF);
+        STOP_CLOCK_TIMER;
     }
 }
 
@@ -2588,6 +2675,7 @@ uint8_t getCurrentClockMode(void){
 
 void setCurrentClockMode(uint8_t u8NewSetting){
     p_VectrData->u8ClockMode = u8NewSetting;
+    calculateClockTimer(u32PlaybackSpeed);
 }
 
 uint8_t getCurrentModulationMode(void){

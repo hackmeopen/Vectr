@@ -225,10 +225,6 @@ void APP_Initialize ( void )
 		TASK_IO_HANDLER_PRIORITY,/*Priority*/
 		NULL/*Task Handle*/
                );
-
-    
-
-    
 }
 
 void vTaskMasterControl(void* pvParameters){
@@ -236,7 +232,7 @@ void vTaskMasterControl(void* pvParameters){
     vTaskDelay(1500*TICKS_PER_MS);
 
     ENABLE_SAMPLE_TIMER_INT;
-    ENABLE_PULSE_TIMER_INT;
+    ENABLE_CLOCK_TIMER_INT;
     setSwitchLEDState(SWITCH_LED_GREEN);
 
     for(;;){
@@ -418,94 +414,58 @@ void vTaskSwitch(void *pvParameters){
     }
 }
 
-void vTIM3InterruptHandler(void){
-    uint8_t u8FlashTimer;
-
-    CLEAR_PULSE_TIMER_INT;
-    setPulseTimerExpiredFlag();
-
-    u8FlashTimer = getFlashTimer();
-    if(u8FlashTimer > 0){
-        u8FlashTimer--;
-        setFlashTimer(u8FlashTimer);
-    }
-
-}
-
-static uint32_t u32ClockPulseTimer;
-static uint32_t u32NextClockPulseIndex;
+static uint32_t u32ClockTimer;
+static uint32_t u32ClockTimerTriggerCount;
 static uint8_t u8ClockPulseFlag;
 static uint8_t u8GatePulseFlag;
+static uint8_t u8ClockEnableFlag = TRUE;
 
-/*This is called at the start of new playback from the beginning to cause an
- immediate clock pulse*/
-void forceClockPulse(void){
-    u8ClockPulseFlag = FALSE;
-    u32ClockPulseTimer = 0xFFFFFFFF;
+void setClockTimerTriggerCount(uint32_t u32NewTriggerCount){
+    u32ClockTimerTriggerCount = u32NewTriggerCount;
+}
+
+void resetClockTimer(void){
+    u32ClockTimer = 0;
+}
+
+void setClockEnableFlag(uint8_t u8NewState){
+    u8ClockEnableFlag = u8NewState;
+}
+
+void vTIM3InterruptHandler(void){
+    uint8_t u8ResetFlag = getResetFlag();
+
+    if(u8ClockEnableFlag == TRUE){
+        if(u8ResetFlag == TRUE){
+            if(getCurrentGateMode() == RESET_GATE){
+                SET_GATE_OUT_PORT;
+                u8GatePulseFlag = TRUE;
+            }
+
+            u32ClockTimer = 0;
+            clearResetFlag();
+        }
+        else{
+             /*If the count has reached the trigger count, it's time for a pulse.*/
+            if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
+                SET_LOOP_SYNC_OUT;
+                u8ClockPulseFlag = TRUE;
+                u32ClockTimer = 0;
+            }
+        }
+    }
 }
 
 void
 vTIM5InterruptHandler(void){
-    uint8_t u8ResetFlag = getResetFlag();
-    static uint16_t u16Count;
 
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
     CLEAR_SAMPLE_TIMER_INT;
     SET_DAC_LDAC;
 
-    if(getPlaybackRunStatus()){
-
-        //If the loop is at the beginning, the reset flag will be set. This
-        //synchronizes everything.
-        if(u32NextClockPulseIndex == 0){
-            u32NextClockPulseIndex = calculateNextClockPulse();
-        }
-
-        if((u8ResetFlag == TRUE) || (u8ClockPulseFlag == FALSE &&
-        u32ClockPulseTimer >= u32NextClockPulseIndex)){
-            //Set the clock pulse.
-            u8ClockPulseFlag = TRUE;
-            setClockPulseFlag();
-
-            SET_LOOP_SYNC_OUT;
-
-            u32NextClockPulseIndex = calculateNextClockPulse();
-
-            u32ClockPulseTimer = CLOCK_PULSE_COUNT_INCREMENT;
-
-            if(u8ResetFlag == TRUE)
-                if(getCurrentGateMode() == RESET_GATE){
-                    SET_GATE_OUT_PORT;
-                    u8GatePulseFlag = TRUE;
-                    u16Count = 0;
-                }
-                u32ClockPulseTimer = 0;
-            }
-            else{
-                u16Count++;
-                u32ClockPulseTimer = CLOCK_PULSE_COUNT_INCREMENT;
-            }
-
-            clearResetFlag();
-
-        }else{
-            u32ClockPulseTimer += CLOCK_PULSE_COUNT_INCREMENT;
-            u16Count += CLOCK_PULSE_COUNT_INCREMENT;
-            //Clear the clock pulse.
-            if(u8ClockPulseFlag == TRUE){
-                u8ClockPulseFlag = FALSE;
-                CLEAR_LOOP_SYNC_OUT;
-            }
-
-            if(u8GatePulseFlag == TRUE){
-                u8GatePulseFlag = FALSE;
-                CLEAR_GATE_OUT_PORT;
-            }
-        }
-
-    }
-    else{
+    if(u8ClockPulseFlag == TRUE){
+        u8ClockPulseFlag = FALSE;
         CLEAR_LOOP_SYNC_OUT;
     }
 
