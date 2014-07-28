@@ -23,6 +23,7 @@ static uint8_t u8FileTableWriteFlag = FALSE;
 static uint8_t u8FileTableWriteState;
 static uint8_t u8FlashTimer = 0;
 static uint8_t u8FlashWriteEnabledFlag = FALSE;
+static uint32_t u32FirstSampleAddress;
 
 static uint8_t u8SPI_MEM_TX_Buffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static uint8_t u8SPI_MEM_RX_Buffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -1224,12 +1225,12 @@ void readRAM_DMA(memory_data_packet * mem_data){
     }
 
     if(u32RAMReadAddress == RESET_RAM_ADDRESS){
-        setResetFlag();
         u32SequencePlaybackPosition = 0;
     }
     else{
-        u32SequencePlaybackPosition += BITS_OF_MEMORY_SECTOR_SIZE;
+        u32SequencePlaybackPosition += 12;
     }
+
 }
 
 void readFlash_DMA(memory_data_packet * mem_data){
@@ -1390,15 +1391,19 @@ void readFlash_DMA(memory_data_packet * mem_data){
     }
 
     if(u32FlashReadAddress == u32SequenceStartAddress){
-        setResetFlag();
+        u32SequencePlaybackPosition = 0;
     }
     else{
-        u32SequencePlaybackPosition += BITS_OF_MEMORY_SECTOR_SIZE;
+        u32SequencePlaybackPosition += 12;
     }
 }
 
 uint32_t getSequencePlaybackPosition(void){
     return u32SequencePlaybackPosition;
+}
+
+uint32_t getFlashFirstSampleAddress(void){
+    return u32FirstSampleAddress;
 }
 
 void readRAMSector(uint8_t * u8Buffer, uint32_t u32StartReadAddress){
@@ -1439,6 +1444,13 @@ void setFlashReadNewSequence(uint8_t u8SequenceIndex){
     u32EndOfCurrentFlashSectorAddress = u32FlashReadAddress + FLASH_UTILIZED_SECTOR_SIZE;
     u32SequenceStartAddress = u32FlashReadAddress;
     u32SequenceEndAddress = ftFileTable.u32SequenceEndAddress[u8SequenceIndex];
+
+    if(getPlaybackDirection == FORWARD_PLAYBACK){
+        u32FirstSampleAddress = u32SequenceStartAddress + 12;
+    }
+    else{
+        u32FirstSampleAddress = u32SequenceEndAddress - 12;
+    }
 }
 
 /*Finds the next sector depending on direction.*/
@@ -1467,6 +1479,14 @@ void flashLocateNextSector(uint8_t u8PlaybackDirection){
         u32FlashReadAddress = u32EndOfCurrentFlashSectorAddress + FLASH_UTILIZED_SECTOR_SIZE;
         u32EndOfCurrentFlashSectorAddress = u32FlashReadAddress;
     }
+}
+
+uint32_t getFlashReadAddress(void){
+    return u32FlashReadAddress;
+}
+
+uint32_t getMemoryStartAddress(void){
+    return u32SequenceStartAddress;
 }
 
 void setFlashReadAddress(uint32_t u32Address){

@@ -432,33 +432,81 @@ void vTIM3InterruptHandler(void){
 
 }
 
-static uint16_t u16timerhelper = 200;
-static uint8_t u8outputState = 0;
+static uint32_t u32ClockPulseTimer;
+static uint32_t u32NextClockPulseIndex;
+static uint8_t u8ClockPulseFlag;
+static uint8_t u8GatePulseFlag;
+
+/*This is called at the start of new playback from the beginning to cause an
+ immediate clock pulse*/
+void forceClockPulse(void){
+    u8ClockPulseFlag = FALSE;
+    u32ClockPulseTimer = 0xFFFFFFFF;
+}
 
 void
 vTIM5InterruptHandler(void){
-    static uint32_t u32ClockPulseTimer;
-    static uint32_t u32NextClockPulseIndex;
-    static uint8_t u8ClockPulseFlag;
+    uint8_t u8ResetFlag = getResetFlag();
+    static uint16_t u16Count;
 
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
     CLEAR_SAMPLE_TIMER_INT;
     SET_DAC_LDAC;
 
-    if(u32ClockPulseTimer == u32NextClockPulseIndex){
-        //Set the clock pulse.
-        u8ClockPulseFlag = TRUE;
-        SET_LOOP_SYNC_OUT;
-        u32ClockPulseTimer = 0;
-    }else{
-        u32ClockPulseTimer += CLOCK_PULSE_COUNT_INCREMENT;
-        //Clear the clock pulse.
-        if(u8ClockPulseFlag == TRUE){
-            u8ClockPulseFlag = FALSE;
-            u32NextClockPulseIndex = getNextClockPulseIndex();
-            CLEAR_LOOP_SYNC_OUT;
+    if(getPlaybackRunStatus()){
+
+        //If the loop is at the beginning, the reset flag will be set. This
+        //synchronizes everything.
+        if(u32NextClockPulseIndex == 0){
+            u32NextClockPulseIndex = calculateNextClockPulse();
         }
+
+        if((u8ResetFlag == TRUE) || (u8ClockPulseFlag == FALSE &&
+        u32ClockPulseTimer >= u32NextClockPulseIndex)){
+            //Set the clock pulse.
+            u8ClockPulseFlag = TRUE;
+            setClockPulseFlag();
+
+            SET_LOOP_SYNC_OUT;
+
+            u32NextClockPulseIndex = calculateNextClockPulse();
+
+            u32ClockPulseTimer = CLOCK_PULSE_COUNT_INCREMENT;
+
+            if(u8ResetFlag == TRUE)
+                if(getCurrentGateMode() == RESET_GATE){
+                    SET_GATE_OUT_PORT;
+                    u8GatePulseFlag = TRUE;
+                    u16Count = 0;
+                }
+                u32ClockPulseTimer = 0;
+            }
+            else{
+                u16Count++;
+                u32ClockPulseTimer = CLOCK_PULSE_COUNT_INCREMENT;
+            }
+
+            clearResetFlag();
+
+        }else{
+            u32ClockPulseTimer += CLOCK_PULSE_COUNT_INCREMENT;
+            u16Count += CLOCK_PULSE_COUNT_INCREMENT;
+            //Clear the clock pulse.
+            if(u8ClockPulseFlag == TRUE){
+                u8ClockPulseFlag = FALSE;
+                CLEAR_LOOP_SYNC_OUT;
+            }
+
+            if(u8GatePulseFlag == TRUE){
+                u8GatePulseFlag = FALSE;
+                CLEAR_GATE_OUT_PORT;
+            }
+        }
+
+    }
+    else{
+        CLEAR_LOOP_SYNC_OUT;
     }
 
     if(getGatePulseFlag() == TRUE){

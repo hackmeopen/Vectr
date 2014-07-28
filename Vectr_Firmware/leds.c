@@ -725,7 +725,8 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
             u16BlueLEDDutyCycleBuffer[u8_index] = 0;
         }
     }
-    }else{
+    }
+    else{
             for(u8_index = 0; u8_index < NUM_OF_BLUE_LEDS; u8_index++){
                     u16_blue_LED_duty_cycles[u8_index] = 0;
             }

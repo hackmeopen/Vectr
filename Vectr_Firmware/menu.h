@@ -26,8 +26,8 @@ enum{
     RECORD_MENU,
     PLAYBACK_MENU,
     OVERDUB_MENU,
-    CLOCK_MENU,
-    EFFECT_MENU
+    EFFECT_MENU,
+    CLOCK_MENU
 };
 
 //X,Y,Z Submenus
@@ -44,6 +44,12 @@ enum{
     SOURCE = 1,
     CONTROL,
     LOOP
+};
+
+//Clock submenus
+enum{
+    SYNC = 4,
+    NUMBER
 };
 
 #define NUM_OF_MAIN_MENUS       10

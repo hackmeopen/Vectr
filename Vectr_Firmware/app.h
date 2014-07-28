@@ -61,6 +61,7 @@ void APP_Initialize ( void );
 void APP_Tasks ( void );
 void SYS_Initialize ( void* data );
 void SYS_Tasks ( void );
+void forceClockPulse(void);
 
 #define FALSE   0
 #define TRUE    1

@@ -101,6 +101,7 @@ void resetClockParameter(void);
 void resetRecParameter(uint8_t u8RecPlayOdub);
 void resetEffectParameter(void);
 void resetXYZParameter(uint8_t u8Mode);
+void changeClockSubMenuState(void);
 
 uint16_t getEncState(void){
     return u16encState;
@@ -291,10 +292,16 @@ void MenuStateMachine(void){
             if(u8MenuKeyPressFlag == TRUE){
                 u8MenuKeyPressFlag = FALSE;
 
-                if(u8ClockModeFlag == FALSE){
+                if(i8SubMenuState == SUBMENU_NOT_SELECTED){
                     u8ClockModeFlag = TRUE;
+                    i8SubMenuState = SYNC;
                     setLEDState(u8LEDMainMenuMapping[i8MainMenuState], ON);
-                    i8SubMenuState = 1;
+                    setLEDState(u8LEDMainMenuMapping[i8SubMenuState-1], BLINK);
+                }
+                else if(u8ParameterEditModeFlag == FALSE){
+                    //Enter the submenu and modify the parameter
+                    u8ParameterEditModeFlag = TRUE;
+                    setLEDState(u8LEDMainMenuMapping[i8SubMenuState-1], ON);
                     initializeClockMode();
                 }
                 else{
@@ -307,14 +314,16 @@ void MenuStateMachine(void){
 
             }
 
-            //Handle the encoder
-            if(u8ClockModeFlag == TRUE){
-                if(i8MenuChangeFlag != 0){
+            //If it made it this far, then it's changing submenus
+            if(i8MenuChangeFlag != 0){
+                //If we're not in parameter edit mode
+                if(u8ParameterEditModeFlag == FALSE){
+                    changeClockSubMenuState();
+                    resetBlink();
+                }
+                else{
                     editClockParameter();
                 }
-            }
-            else{
-                i8MenuChangeFlag = 0;
             }
             break;
         default:
@@ -729,34 +738,82 @@ void changeRecSubMenuState(void){
 void initializeClockMode(void){
     uint8_t u8CurrentParameter;
 
-    u8CurrentParameter = getCurrentClockMode();
-    setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
-    u8MenuEntryParameter = u8CurrentParameter;
+    if(i8SubMenuState == SYNC){
+        u8CurrentParameter = getCurrentGateMode();
+        setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
+        u8MenuEntryParameter = u8CurrentParameter;
+    }
+    else{
+        u8CurrentParameter = getCurrentClockMode();
+        setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
+        u8MenuEntryParameter = u8CurrentParameter;
+    }
+}
+
+void changeClockSubMenuState(void){
+    setLEDState(u8LEDMainMenuMapping[i8SubMenuState-1], OFF);
+
+    if(i8SubMenuState == SYNC){
+        i8SubMenuState = NUMBER;
+    }
+    else{
+        i8SubMenuState = SYNC;
+    }
+
+    setLEDState(u8LEDMainMenuMapping[i8SubMenuState-1], BLINK);
+
+    i8MenuChangeFlag = 0;
+
+
+
 }
 
 void editClockParameter(void){
     uint8_t u8CurrentParameter;
 
-    u8CurrentParameter = getCurrentClockMode();
-    setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
+    if(i8SubMenuState == NUMBER){
+        u8CurrentParameter = getCurrentClockMode();
+        setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
 
-    if(i8MenuChangeFlag > 0){
-       if(++u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
-           u8CurrentParameter = 0;
-       }
-    }else{
-        if(--u8CurrentParameter > NUM_OF_CLOCK_SETTINGS){
-            u8CurrentParameter = NUM_OF_CLOCK_SETTINGS-1;
+        if(i8MenuChangeFlag > 0){
+           if(++u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
+               u8CurrentParameter = 0;
+           }
+        }else{
+            if(--u8CurrentParameter > NUM_OF_CLOCK_SETTINGS){
+                u8CurrentParameter = NUM_OF_CLOCK_SETTINGS-1;
+            }
         }
+        setCurrentClockMode(u8CurrentParameter);
+        setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
     }
-    setCurrentClockMode(u8CurrentParameter);
-    setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
+    else{
+        u8CurrentParameter = getCurrentGateMode();
+        setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
+
+        if(i8MenuChangeFlag > 0){
+           if(++u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
+               u8CurrentParameter = 0;
+           }
+        }else{
+            if(--u8CurrentParameter > NUM_OF_CLOCK_SETTINGS){
+                u8CurrentParameter = NUM_OF_CLOCK_SETTINGS-1;
+            }
+        }
+        setCurrentGateMode(u8CurrentParameter);
+        setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
+    }
 
     i8MenuChangeFlag = 0;
 }
 
 void resetClockParameter(void){
-    setCurrentClockMode(u8MenuEntryParameter);
+    if(i8SubMenuState == NUMBER){
+        setCurrentClockMode(u8MenuEntryParameter);
+    }
+    else{
+        setCurrentGateMode(u8MenuEntryParameter);
+    }
 }
 
 void initializeEffectMode(void){

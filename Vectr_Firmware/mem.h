@@ -207,6 +207,9 @@ void changeFlashPlaybackDirection(uint8_t u8NewDirection);
 void copyCurrentSettingsToFileTable(uint8_t u8Index);
 void loadSettingsFromFileTable(uint8_t u8Index);
 VectrDataStruct * setFileTableDataPointer(uint8_t u8Index);
+uint32_t getFlashFirstSampleAddress(void);
+uint32_t getFlashReadAddress(void);
+uint32_t getMemoryStartAddress(void);
 
 
 #endif	/* MEM_H */

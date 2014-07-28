@@ -10,25 +10,13 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Test hold modes
-//TODO Test clock and gate output
-//TODO Test Mute Mode
-//TODO Test playback algorithms - final check.
+//TODO Figure out the Flash Reset point
 //TODO Test Effects
 //TODO Test slew rate menu adjustment
-//TODO Test the ranges
-//TODO Make sure the output can go to 0. Something with the I2C algorithm- maybe slew rate problem.
-//TODO Test Ramp Output
 //TODO Test Air Scratch - change speed and direction
-//TODO Dismiss a hold or live play activation during sequence mode - Test this - maybe more null checking?
 //TODO Test jack detection with final sample
 //TODO Test with 512k RAM with final sample
-
 //TODO Include Bootloader
-
-//TODO Fix the length of files being saved to flash -4096 is not evenly divisible by 12
-//TODO After storing a patch, playback doesn't start again.
-
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -77,6 +65,7 @@ static uint8_t u16ModulationOnFlag = FALSE;
 static uint8_t u8ResetFlag = FALSE;
 static uint8_t u8AirScratchRunFlag = FALSE;
 static uint8_t u8OperatingMode;
+static uint8_t u8PreviousOperatingMode;
 
 static pos_and_gesture_data pos_and_gesture_struct;
 static pos_and_gesture_data * p_mem_pos_and_gesture_struct;
@@ -93,7 +82,7 @@ static uint8_t u8SequenceModeIndexes[MAX_NUM_OF_SEQUENCES];
 uint8_t u8SequenceModeSelectedSequenceIndex;
 
 static uint8_t u8NumOfClockPulses;
-static uint8_t u32NextClockPulseIndex;
+static uint32_t u32NextClockPulseIndex;
 
 static uint16_t u16LastScratchPosition;
 static uint32_t u32ScratchNeutralSpeed;
@@ -146,8 +135,7 @@ void mutePosition(pos_and_gesture_data * p_pos_and_gesture_struct);
 void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct);
 void adjustSpeedModulation(uint16_t u16NewValue);
 void setNumberOfClockPulses(void);
-void calculateNextClockPulse(void);
-void calculateRampOutput(pos_and_gesture_data * p_pos_and_gesture_struct);
+uint32_t calculateRampOutput(void);
 void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct);
 
 void MasterControlInit(void){
@@ -207,6 +195,9 @@ void MasterControlInit(void){
     u8HoldState = OFF;
     u8MenuModeFlag = FALSE;
     u8EncKeyPressFlag = FALSE;
+
+    CLEAR_GATE_OUT_PORT;
+    CLEAR_LOOP_SYNC_OUT;
 
     p_VectrData = &VectrData;
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
@@ -349,11 +340,6 @@ void MasterControlStateMachine(void){
 
             slewPosition(&pos_and_gesture_struct);
 
-            mutePosition(&pos_and_gesture_struct);
-
-            linearizePosition(&pos_and_gesture_struct);
-
-
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
                 u8HoldActivationFlag = HOLD_ACTIVATE;
                 u8HandHoldFlag =  TRUE;
@@ -388,6 +374,10 @@ void MasterControlStateMachine(void){
             if(u8MenuModeFlag == FALSE){
                 xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
             }
+
+            mutePosition(&pos_and_gesture_struct);
+
+            linearizePosition(&pos_and_gesture_struct);
 
             /*Implement scaling.*/
             scaleRange(&pos_and_gesture_struct);
@@ -684,8 +674,14 @@ void MasterControlStateMachine(void){
              are active*/
             //Handle the outputs
             if(u8OverdubRunFlag == TRUE && u8SampleTimerFlag == TRUE){
+
                 if(u8BufferDataCount == 0){
                     xQueueReceive(xRAMReadQueue, &memBuffer, 0);
+
+                    if(getRAMReadAddress() == 12){
+                        setResetFlag();
+                    }
+
                     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
                     p_overdub_pos_and_gesture_struct = &overdubBuffer.sample_1;
                     u8BufferDataCount++;
@@ -882,7 +878,7 @@ void MasterControlStateMachine(void){
                             Flags.u8SequencingFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
-                            u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            u8OperatingMode =  u8PreviousOperatingMode;
                             /*Copy the current data structure into the standard local
                              data structure.*/
                             if(getStoredSequenceLocationFlag() != STORED_IN_RAM){
@@ -949,8 +945,8 @@ void MasterControlStateMachine(void){
                             turnOffAllLEDs();
                             Flags.u8SequencingFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
-                            setIndicateSequenceModeFlag(FALSE);
-                            u8OperatingMode =  PLAYBACK;//Fix this. Back to Live Play?
+                            setIndicateMuteModeFlag(FALSE);
+                            u8OperatingMode =  u8PreviousOperatingMode;//Fix this. Back to Live Play?
                             break;
                         default:
                             break;
@@ -1001,13 +997,24 @@ void runPlaybackMode(void){
 
         if(u8BufferDataCount == 0){
             xQueueReceive(xRAMReadQueue, &memBuffer, 0);
+
+            if(getStoredSequenceLocationFlag() == STORED_IN_RAM){
+                if(getRAMReadAddress() == 0){
+                    setResetFlag();
+                }
+            }else{
+                if(getFlashReadAddress() == getMemoryStartAddress()){
+                    setResetFlag();
+                }
+            }
+
             p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
             u8BufferDataCount++;
         }
         else{
             p_mem_pos_and_gesture_struct = &memBuffer.sample_2;
             u8MemCommand = READ_RAM;
-            xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for write
+            xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
             u8BufferDataCount = 0;
         }
    }
@@ -1019,7 +1026,7 @@ void runPlaybackMode(void){
            runModulation(p_mem_pos_and_gesture_struct);
        }
 
-       mutePosition(p_mem_pos_and_gesture_struct);
+       
 
        /*Check encoder activations. Could go to live play or implement a hold*/
         if(u8HoldActivationFlag == HOLD_ACTIVATE){
@@ -1034,6 +1041,7 @@ void runPlaybackMode(void){
             setSwitchLEDState(OFF);
             if(u8OperatingMode != SEQUENCING){
                 u8OperatingMode = LIVE_PLAY;
+                u8PlaybackRunFlag = FALSE;
             }
             u8LivePlayActivationFlag = FALSE;
         }
@@ -1048,21 +1056,12 @@ void runPlaybackMode(void){
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
         }
 
-       //If the clock output is being driven, set the next index to trigger the clock pulse.
-       if(u8ClockPulseFlag == TRUE){
-          /*Calculate the number of memory addresses until the next clock pulse. It's the length of the sequence
-           shifted down by the number of clocks.*/
-           calculateNextClockPulse();
-           u8ClockPulseFlag = FALSE;
-       }
-
-
-
        xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+       mutePosition(p_mem_pos_and_gesture_struct);
+
        scaleRange(p_mem_pos_and_gesture_struct);
        /*Quantize the position.*/
        quantizePosition(p_mem_pos_and_gesture_struct);
-       calculateRampOutput(p_mem_pos_and_gesture_struct);//Make a ramp on the outputs if necessary
        xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
    }
    else{
@@ -1153,43 +1152,46 @@ void setAirScratchNeutralSpeed(uint32_t u32NewNeutralSpeed){
     u32ScratchNeutralSpeed = u32NewNeutralSpeed;
 }
 
-void calculateRampOutput(pos_and_gesture_data * p_pos_and_gesture_struct){
-    uint32_t u32SequenceLength;
-    uint32_t u32SequencePosition;
+
+uint32_t calculateRampOutput(void){
+    uint32_t u32SequencePosition = getSequencePlaybackPosition();
+    uint32_t u32SequenceLength = getActiveSequenceLength();
     uint32_t u32OutputValue;
 
-    if(p_VectrData->u8Range[X_OUTPUT_INDEX] == RAMP ||
-       p_VectrData->u8Range[Y_OUTPUT_INDEX] == RAMP ||
-       p_VectrData->u8Range[Z_OUTPUT_INDEX] == RAMP){
-        u32SequenceLength = getActiveSequenceLength();
-        u32SequencePosition = getSequencePlaybackPosition();
-        u32OutputValue = MAXIMUM_OUTPUT_VALUE*u32SequencePosition;
-        u32OutputValue /= u32SequenceLength;
-        
-        if(p_VectrData->u8Range[X_OUTPUT_INDEX] == RAMP){
-            p_pos_and_gesture_struct->u16XPosition = u32OutputValue;
-        }
-        if(p_VectrData->u8Range[Y_OUTPUT_INDEX] == RAMP){
-            p_pos_and_gesture_struct->u16YPosition = u32OutputValue;
-        }
-        if(p_VectrData->u8Range[Z_OUTPUT_INDEX] == RAMP){
-            p_pos_and_gesture_struct->u16ZPosition = u32OutputValue;
-        }
-    }
+    u32OutputValue = MAXIMUM_OUTPUT_VALUE*u32SequencePosition;
+    u32OutputValue /= u32SequenceLength;
+
+    return u32OutputValue;
 }
 
 /*Clock pulses are generated in the sample timer routine. The only thing that's needed to know
  is the number of memory bytes used between steps. Options are 1,2,4,8,16*/
-void calculateNextClockPulse(void){
-    uint32_t u32LengthOfSequence = getActiveSequenceLength();
-    uint8_t u8Shift = 0;
+uint32_t calculateNextClockPulse(void){
+    static uint8_t u8RoundFlag = 0;
+    uint32_t u32LengthOfSequence = getActiveSequenceLength() - 12;
     uint8_t u8ClockMode = p_VectrData->u8ClockMode;
+    uint8_t u8Modulus;
 
-    if(u8ClockMode > 0){
-        u8Shift = 1<<(u8ClockMode-1);
+    u32NextClockPulseIndex = u32LengthOfSequence>>u8ClockMode;
+
+    u8Modulus = u32NextClockPulseIndex%6;
+
+    if(u8Modulus){
+        if(u8RoundFlag == 0){
+            u8RoundFlag = 1;
+            u32NextClockPulseIndex -= u8Modulus;
+        }
+        else{
+            u8RoundFlag = 0;
+            u32NextClockPulseIndex += 6-u8Modulus;
+        }
     }
 
-    u32NextClockPulseIndex = u32LengthOfSequence>>u8Shift;
+    return u32NextClockPulseIndex;
+}
+
+void clearNextClockPulseIndex(void){
+    u32NextClockPulseIndex = 0;
 }
 
 void enterOverdubMode(void){
@@ -1207,6 +1209,7 @@ void enterAirScratchMode(void){
 }
 
 void enterMuteMode(void){
+    u8PreviousOperatingMode = u8OperatingMode;
     u8OperatingMode = MUTING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
@@ -1240,6 +1243,7 @@ void enterSequencerMode(void){
     /*If at least one sequence is recorded, go to sequence mode, otherwise
      * indicate an error*/
     if(atLeastOneSequenceRecordedFlag == TRUE){
+        u8PreviousOperatingMode = u8OperatingMode;
         u8OperatingMode = SEQUENCING;
         Flags.u8SequencingFlag = FALSE;
         setLEDAlternateFuncFlag(TRUE);
@@ -1326,17 +1330,7 @@ void gateHandler(void){
             }
             break;
         case RESET_GATE:
-            /*Handled in the clock routine.*/
-            //Get the current read address for clocking.
-
-            if(u8ResetFlag == TRUE && u8GatePulseFlag == FALSE
-              && u8PlaybackRunFlag == RUN){
-                u8GatePulseFlag = TRUE;
-                u8ResetFlag = FALSE;
-            }
-            else{
-                CLEAR_GATE_OUT_PORT;
-            }
+            /*Handled in the TIM5 routine to keep the timing tight.*/
             break;
         case PLAY_GATE:
             /*If playback is running, high. Otherwise, low.*/
@@ -1360,12 +1354,13 @@ void gateHandler(void){
             if(u8QuantizationGateFlag == TRUE && u8GatePulseFlag == FALSE){
                 u8GatePulseFlag = TRUE;
                 SET_GATE_OUT_PORT;
-                RESET_PULSE_TIMER;
+                u8QuantizationGateFlag = FALSE;
             }
-            else if(u8PulseExpiredFlag == TRUE && u8GatePulseFlag == TRUE){
-                //Pulse expired. End it.
+            else{
+                u8GatePulseFlag = FALSE;
                 CLEAR_GATE_OUT_PORT;
             }
+           
             break;
         default:
             break;
@@ -1375,6 +1370,7 @@ void gateHandler(void){
 /*Quantize the position data.*/
 void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     int i;
+    static uint16_t u16LastQuantization[NUM_OF_AXES];
     uint8_t u8QuantizationMode;
     uint16_t u16temp;
     uint8_t u8index;
@@ -1391,19 +1387,33 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
                 break;
             case CHROMATIC:
                 u16CurrentPosition[i] = scaleBinarySearch(u16ChromaticScale, u16temp, LENGTH_OF_CHROMATIC_SCALE);
+                if(u16CurrentPosition[i] != u16LastQuantization[i]){
+                    u8QuantizationGateFlag = TRUE;
+                }
                 break;
             case MAJOR:
                 u16CurrentPosition[i] = scaleBinarySearch(u16MajorScale, u16temp, LENGTH_OF_MAJOR_SCALE);
+                if(u16CurrentPosition[i] != u16LastQuantization[i]){
+                    u8QuantizationGateFlag = TRUE;
+                }
                 break;
             case PENTATONIC:
                 u16CurrentPosition[i] = scaleBinarySearch(u16PentatonicScale, u16temp, LENGTH_OF_PENTATONIC_SCALE);
+                if(u16CurrentPosition[i] != u16LastQuantization[i]){
+                    u8QuantizationGateFlag = TRUE;
+                }
                 break;
             case OCTAVE:
                 u16CurrentPosition[i] = scaleBinarySearch(u16OctaveScale, u16temp, LENGTH_OF_OCTAVE_SCALE);
+                if(u16CurrentPosition[i] != u16LastQuantization[i]){
+                    u8QuantizationGateFlag = TRUE;
+                }
                 break;
             default:
                 break;
-    }
+        }
+
+        u16LastQuantization[i] = u16CurrentPosition[i];
    }
 
     p_pos_and_gesture_struct->u16XPosition = u16CurrentPosition[0];
@@ -1725,12 +1735,15 @@ pos_and_gesture_data * p_hold_data_struct){
             break;
         case OVERDUBBING:
             if(u8OverdubRunFlag == TRUE){
-                if(u8HoldMode != TRACKLIVE){
-                        *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
-                    }
-                    else{
-                        *(p_u16MemoryPosition + i) = *(p_u16Position + i);
-                    }
+                if(u8HoldMode == ZERO){
+                    *(p_u16MemoryPosition + i) = 0;
+                }
+                else if(u8HoldMode != TRACKLIVE){
+                    *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
+                }
+                else{
+                    *(p_u16MemoryPosition + i) = *(p_u16Position + i);
+                }
             }
             else{
                 switch(u8HoldMode){
@@ -1771,6 +1784,7 @@ void startNewRecording(void){
     resetSpeed();
     u8OperatingMode = RECORDING;
     u8RecordRunFlag = TRUE;
+    u8PlaybackRunFlag = FALSE;
     resetRAMWriteAddress();
     memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
     memBuffer.sample_1.u16YPosition = pos_and_gesture_struct.u16YPosition;
@@ -1787,6 +1801,7 @@ void finishRecording(void){
     u8RecordRunFlag = FALSE;
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
+    calculateNextClockPulse();
                     
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
@@ -1849,7 +1864,6 @@ void switchStateMachine(void){
                         if(p_VectrData->u8Source[PLAY] == SWITCH){
                             u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
-                           // resetRAMReadAddress();//necessary? probably not desirable.
                         }
                         else{//external control = arm playback
                             armPlayback();
@@ -1974,7 +1988,7 @@ void switchStateMachine(void){
                             }
                         }
                         else{
-
+                            //This if for one-shot mode and retrigger mode.
                             setRAMRetriggerFlag();
                             //Retrigger playback mode.
                             u8PlaybackRunFlag = RUN;
@@ -2329,9 +2343,6 @@ void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     else if(i32XDifference < -u16XSlewRate){
         u16NewXPosition = u16CurrentXPosition - u16XSlewRate;
     }
-    else{
-        u16NewXPosition = u16CurrentXPosition;
-    }
 
     if(i32YDifference > u16YSlewRate){
         u16NewYPosition = u16CurrentYPosition + u16YSlewRate;
@@ -2339,18 +2350,12 @@ void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     else if(i32YDifference < -u16YSlewRate){
         u16NewYPosition = u16CurrentYPosition - u16YSlewRate;
     }
-    else{
-        u16NewYPosition = u16CurrentYPosition;
-    }
 
     if(i32ZDifference > u16ZSlewRate){
         u16NewZPosition = u16CurrentZPosition + u16ZSlewRate;
     }
     else if(i32ZDifference < -u16ZSlewRate){
         u16NewZPosition = u16CurrentZPosition - u16ZSlewRate;
-    }
-    else{
-        u16NewZPosition = u16CurrentZPosition;
     }
 
     p_VectrData->u16CurrentXPosition = u16NewXPosition;
@@ -2457,7 +2462,16 @@ void scaleRange(pos_and_gesture_data * p_pos_and_gesture_struct){
                 u32temp += ZERO_VOLT_OUTPUT_VALUE;
                 break;
             case RAMP:
-                //ramp from beginning of loop to end of loop
+                /*ramp from beginning of loop to end of loop
+                 * 
+                */
+                if(u8SequenceRecordedFlag == TRUE){
+                    u32temp = calculateRampOutput();
+                }
+                else{
+                    u32temp = ZERO_VOLT_OUTPUT_VALUE;
+                }
+                
                 break;
         }
 
@@ -2560,6 +2574,14 @@ void setCurrentLoopMode(uint8_t u8NewSetting){
     }
 }
 
+uint8_t getCurrentGateMode(void){
+    return p_VectrData->u8GateMode;
+}
+
+void setCurrentGateMode(uint8_t u8NewState){
+    p_VectrData->u8GateMode = u8NewState;
+}
+
 uint8_t getCurrentClockMode(void){
     return p_VectrData->u8ClockMode;
 }
@@ -2596,6 +2618,10 @@ void setNumberOfClockPulses(void){
     u8NumOfClockPulses = 1 << p_VectrData->u8ClockMode;
 }
 
+void setClockPulseFlag(void){
+    u8ClockPulseFlag = TRUE;
+}
+
 uint32_t getNextClockPulseIndex(void){
     return u32NextClockPulseIndex;
 }
@@ -2608,8 +2634,16 @@ void setGatePulseFlag(uint8_t u8NewState){
     u8GatePulseFlag = u8NewState;
 }
 
-void setResetFlag(uint8_t u8NewState){
-    u8ResetFlag = u8NewState;
+void setResetFlag(void){
+    u8ResetFlag = TRUE;
+}
+
+void clearResetFlag(void){
+    u8ResetFlag = FALSE;
+}
+
+uint8_t getResetFlag(void){
+    return u8ResetFlag;
 }
 
 VectrDataStruct * getVectrDataStart(void){
