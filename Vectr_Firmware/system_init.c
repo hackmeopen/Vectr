@@ -84,7 +84,7 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 #pragma config IESO = OFF                // Internal/External Switch Over (Enabled)
 #pragma config POSCMOD = HS             // Primary Oscillator Configuration (HS osc mode)
 #pragma config OSCIOFNC = OFF           // CLKO Output Signal Active on the OSCO Pin (Disabled)
-#pragma config FPBDIV = DIV_2           // Peripheral Clock Divisor (Pb_Clk is Sys_Clk/1)
+#pragma config FPBDIV = DIV_1           // Peripheral Clock Divisor (Pb_Clk is Sys_Clk/1)
 #pragma config FCKSM = CSDCMD           // Clock Switching and Monitor Selection (Clock Switch Enable, FSCM Enabled)
 #pragma config WDTPS = PS1048576        // Watchdog Timer Postscaler (1:1048576)
 #pragma config WINDIS = OFF             // Watchdog Timer Window Enable (Watchdog Timer is in Non-Window Mode)
@@ -203,18 +203,6 @@ void SYS_Initialize ( void* data )
     PLIB_INT_ExternalRisingEdgeSelect(INT_ID_0, INT_EXTERNAL_INT_SOURCE4);
     PLIB_INT_VectorPrioritySet(INT_ID_0, INT_VECTOR_INT4, configMAX_SYSCALL_INTERRUPT_PRIORITY-2);
     PLIB_INT_VectorSubPrioritySet(INT_ID_0, INT_VECTOR_INT4, INT_SUBPRIORITY_LEVEL3);
-
-//    PLIB_INT_VectorPrioritySet(INT_ID_0, INT_VECTOR_SPI1_TX, configMAX_SYSCALL_INTERRUPT_PRIORITY-2);
-//    PLIB_INT_VectorSubPrioritySet(INT_ID_0, INT_VECTOR_SPI1_TX, INT_SUBPRIORITY_LEVEL1);
-//
-//    PLIB_INT_VectorPrioritySet(INT_ID_0, INT_VECTOR_SPI1_RX, configMAX_SYSCALL_INTERRUPT_PRIORITY-2);
-//    PLIB_INT_VectorSubPrioritySet(INT_ID_0, INT_VECTOR_SPI1_RX, INT_SUBPRIORITY_LEVEL1);
-//
-//    PLIB_INT_VectorPrioritySet(INT_ID_0, INT_VECTOR_SPI2_TX, configMAX_SYSCALL_INTERRUPT_PRIORITY-2);
-//    PLIB_INT_VectorSubPrioritySet(INT_ID_0, INT_VECTOR_SPI2_TX, INT_SUBPRIORITY_LEVEL1);
-//
-//    PLIB_INT_VectorPrioritySet(INT_ID_0, INT_VECTOR_SPI2_RX, configMAX_SYSCALL_INTERRUPT_PRIORITY-2);
-//    PLIB_INT_VectorSubPrioritySet(INT_ID_0, INT_VECTOR_SPI2_RX, INT_SUBPRIORITY_LEVEL1);
 
     PLIB_INT_VectorPrioritySet(INT_ID_0, INT_VECTOR_CHANGE_NOTICE_E, configMAX_SYSCALL_INTERRUPT_PRIORITY-2);
     PLIB_INT_VectorSubPrioritySet(INT_ID_0, INT_VECTOR_CHANGE_NOTICE_E, INT_SUBPRIORITY_LEVEL2);

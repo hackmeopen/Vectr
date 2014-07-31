@@ -10,8 +10,9 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO The clock calculation must be performed whenever the sequence length is adjusted.
-//TODO What to do with the clock timer during scrub mode? Turn it off and trigger the clock some other way.
+//TODO Find the bug - related to stopped playback, hold or something.
+//TODO Make sure that the SYNC input can be used to reverse direction in FLIP mode.
+//TODO Check retrigger playback behavior with the switch. Make sure it retriggers.
 //TODO Test Effects - Test scrub clocks and with flash
 //TODO Test slew rate menu adjustment
 //TODO Test Air Scratch - change speed and direction
@@ -247,6 +248,7 @@ void MasterControlStateMachine(void){
         encoderLiveInteraction();
     }
 
+    /*Gesture debouncing keeps accidental gestures from occurring after the last gesture.*/
     if(u8GestureDebounceTimer > 0){
        u8GestureDebounceTimer--;
     }
@@ -378,15 +380,14 @@ void MasterControlStateMachine(void){
                 u8HoldState = OFF;
             }
             else if(u8LivePlayActivationFlag == TRUE){
-                /*Back to Live Play*/
+                /*We're already in live play. Just clear the flags.*/
                 u8HoldState = OFF;
                 u8LivePlayActivationFlag = FALSE;
             }
 
-
             /*If hold is active, execute the hold behavior*/
             if(u8HoldState == ON){
-                holdHandler(&pos_and_gesture_struct, NULL, &hold_position_struct);
+                holdHandler(&pos_and_gesture_struct, &pos_and_gesture_struct, &hold_position_struct);
             }
 
             /*If menu mode is active, the menu controls the LEDs.*/
@@ -617,7 +618,6 @@ void MasterControlStateMachine(void){
                     //Don't adjust speed during a hold
                     u16LastAirWheelData = u16AirwheelData;
                 }
-
             }
             
             /*If we're in gate mode, then a low level stops recording. A high level starts recording.
@@ -1012,8 +1012,7 @@ void MasterControlStateMachine(void){
 
 void runPlaybackMode(void){
 
-   if(u8PlaybackRunFlag == RUN && u8HoldState == OFF){
-
+   if(u8PlaybackRunFlag == RUN){
         if(u8BufferDataCount == 0){
             xQueueReceive(xRAMReadQueue, &memBuffer, 0);
 
@@ -1036,38 +1035,11 @@ void runPlaybackMode(void){
             xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
             u8BufferDataCount = 0;
         }
-   }
 
-   if(p_mem_pos_and_gesture_struct != NULL){
-       slewPosition(p_mem_pos_and_gesture_struct);
+        slewPosition(p_mem_pos_and_gesture_struct);
 
-       if(u16ModulationOnFlag == TRUE){
-           runModulation(p_mem_pos_and_gesture_struct);
-       }
-
-       
-
-       /*Check encoder activations. Could go to live play or implement a hold*/
-        if(u8HoldActivationFlag == HOLD_ACTIVATE){
-            u8HoldState = ON;
-            setHoldPosition(p_mem_pos_and_gesture_struct);
-            u8HoldActivationFlag = FALSE;
-        }
-        else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
-            u8HoldState = OFF;
-        }
-        else if(u8LivePlayActivationFlag == TRUE){
-            setSwitchLEDState(OFF);
-            if(u8OperatingMode != SEQUENCING){
-                u8OperatingMode = LIVE_PLAY;
-                u8PlaybackRunFlag = FALSE;
-            }
-            u8LivePlayActivationFlag = FALSE;
-        }
-
-        if(u8SyncTrigger == TRUE){
-            setRAMRetriggerFlag();
-            u8SyncTrigger = FALSE;
+        if(u16ModulationOnFlag == TRUE){
+            runModulation(p_mem_pos_and_gesture_struct);
         }
 
         /*If hold is active, execute the hold behavior*/
@@ -1075,20 +1047,38 @@ void runPlaybackMode(void){
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
         }
 
-       xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
-       mutePosition(p_mem_pos_and_gesture_struct);
+        xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+        mutePosition(p_mem_pos_and_gesture_struct);
 
-       scaleRange(p_mem_pos_and_gesture_struct);
-       /*Quantize the position.*/
-       quantizePosition(p_mem_pos_and_gesture_struct);
-       xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
+        scaleRange(p_mem_pos_and_gesture_struct);
+        /*Quantize the position.*/
+        quantizePosition(p_mem_pos_and_gesture_struct);
+        xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
    }
-   else{
-       p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
-   }
-   
-  
-    
+       
+   if(u8SyncTrigger == TRUE){
+        setRAMRetriggerFlag();
+        u8SyncTrigger = FALSE;
+    }
+
+   /*Check encoder activations. Could go to live play or implement a hold*/
+    if(u8HoldActivationFlag == HOLD_ACTIVATE){
+        u8HoldState = ON;
+        setHoldPosition(p_mem_pos_and_gesture_struct);
+        u8HoldActivationFlag = FALSE;
+    }
+    else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
+        u8HoldState = OFF;
+    }
+    else if(u8LivePlayActivationFlag == TRUE){
+        setSwitchLEDState(OFF);
+        u8HoldState = OFF;
+        if(u8OperatingMode != SEQUENCING){
+            u8OperatingMode = LIVE_PLAY;
+            u8PlaybackRunFlag = FALSE;
+        }
+        u8LivePlayActivationFlag = FALSE;
+    }
 }
 
 /* Air scratch mode behavior.
@@ -1736,9 +1726,27 @@ void holdHandler(pos_and_gesture_data * p_position_data_struct, pos_and_gesture_
 pos_and_gesture_data * p_hold_data_struct){
     int i;
     uint8_t u8HoldMode;
-    uint16_t * p_u16Position = &(p_position_data_struct->u16XPosition);//Point to the start of the struct  X Position
-    uint16_t * p_u16HoldPosition = &(p_hold_data_struct->u16XPosition);//Point to the start of the struct
-    uint16_t * p_u16MemoryPosition = &(p_memory_data_struct->u16XPosition);
+    uint16_t * p_u16Position;
+    uint16_t * p_u16HoldPosition;
+    uint16_t * p_u16MemoryPosition;
+
+    if(p_position_data_struct != NULL){
+        p_u16Position = &p_position_data_struct->u16XPosition;
+    }
+
+    if(p_hold_data_struct != NULL){
+       p_u16HoldPosition = &p_hold_data_struct->u16XPosition;
+    }
+    else{
+       p_u16HoldPosition = p_u16Position;
+    }
+
+    if(p_u16MemoryPosition != NULL){
+        p_u16MemoryPosition = &p_memory_data_struct->u16XPosition;
+    }
+    else{
+        p_u16MemoryPosition = p_u16Position;
+    }
 
     /*There are behavioral differences for the hold mode depending on which master state
      we are in and whether playback is running or not.
@@ -1896,9 +1904,11 @@ void finishRecording(void){
 }
 
 void setHoldPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
-    hold_position_struct.u16XPosition = p_pos_and_gesture_struct->u16XPosition;
-    hold_position_struct.u16YPosition = p_pos_and_gesture_struct->u16YPosition;
-    hold_position_struct.u16ZPosition = p_pos_and_gesture_struct->u16ZPosition;
+    if(p_pos_and_gesture_struct != NULL){
+        hold_position_struct.u16XPosition = p_pos_and_gesture_struct->u16XPosition;
+        hold_position_struct.u16YPosition = p_pos_and_gesture_struct->u16YPosition;
+        hold_position_struct.u16ZPosition = p_pos_and_gesture_struct->u16ZPosition;
+    }
 }
 
 void armRecording(void){
@@ -1942,6 +1952,7 @@ void switchStateMachine(void){
                         if(p_VectrData->u8Source[PLAY] == SWITCH){
                             u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
+                            u8HoldState = OFF;//Turn off hold to start playback.
                         }
                         else{//external control = arm playback
                             armPlayback();
@@ -2052,6 +2063,7 @@ void switchStateMachine(void){
                            p_VectrData->u8PlaybackMode != RETRIGGER){
                             if(u8PlaybackRunFlag != RUN){
                                 u8PlaybackRunFlag = RUN;
+                                u8HoldState = OFF;//Turn off any hold.
                             }
                             else{
                                 u8PlaybackRunFlag = STOP;
@@ -2139,6 +2151,7 @@ void switchStateMachine(void){
                     u8OverdubRunFlag ^= TRUE;
 
                     if(u8OverdubRunFlag == TRUE){
+                        u8HoldState = OFF;//Turn off any hold
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                     }
                     else{
@@ -2201,6 +2214,7 @@ void switchStateMachine(void){
                 if(u8MenuModeFlag == FALSE){
                     if(p_VectrData->u8Source[PLAY] == SWITCH){
                         if(u8PlaybackRunFlag != RUN){
+                            u8HoldState = OFF;
                             u8PlaybackRunFlag = RUN;
                         }
                         else{
