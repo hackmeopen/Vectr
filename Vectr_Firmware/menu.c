@@ -373,17 +373,18 @@ void encoderLiveInteraction(void){
     else if(i16EncoderState <= i16EncoderLiveZeroPosition-HOLD_ACTIVATION_CLICKS){
         
         if(getHoldState() == OFF){
-            event_message.u8messageType = HOLD_IN_EVENT;
-            event_message.u8message = TRIGGER_WENT_HIGH;
+            event_message.u16messageType = HOLD_IN_EVENT;
+            event_message.u16message = TRIGGER_WENT_HIGH;
             xQueueSend(xIOEventQueue, &event_message, 0);
         }
         else{
-            event_message.u8messageType = HOLD_IN_EVENT;
-            event_message.u8message = TRIGGER_WENT_LOW;
+            event_message.u16messageType = HOLD_IN_EVENT;
+            event_message.u16message = TRIGGER_WENT_LOW;
             xQueueSend(xIOEventQueue, &event_message, 0);
         }
         i16EncoderLiveZeroPosition = i16EncoderState;
     }
+    
 }
 
 void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value){
@@ -406,6 +407,14 @@ void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value){
             u16ThirdLEDValue = u16SecondLEDValue + u16LEDIncrement;
             u16FourthLEDValue = u16ThirdLEDValue + u16LEDIncrement;
             u16LEDScaling = LINEARITY_LED_SCALING;
+            break;
+        case SLEW_RATE:
+            u16MaxValue = MAX_SLEW_RATE;
+            u16LEDIncrement = SLEW_RATE_LED_INCREMENT;
+            u16SecondLEDValue =  u16LEDIncrement;
+            u16ThirdLEDValue = u16SecondLEDValue + u16LEDIncrement;
+            u16FourthLEDValue = u16ThirdLEDValue + u16LEDIncrement;
+            u16LEDScaling = SLEW_RATE_LED_SCALING;
             break;
         default:
             break;
@@ -851,33 +860,34 @@ void resetEffectParameter(void){
 }
 
 void initializeXYZParameterMode(void){
-    uint8_t u8CurrentParameter;
+    uint16_t u16CurrentParameter;
 
     switch(i8SubMenuState){
         case RANGE:
-            u8CurrentParameter = getCurrentRange(i8MainMenuState);
-            setLEDState(u8StandardSubMenuMapping[u8CurrentParameter], ON);
+            u16CurrentParameter = getCurrentRange(i8MainMenuState);
+            setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], ON);
             break;
         case LINEARITY:
-            u8CurrentParameter = getCurrentLinearity(i8MainMenuState);
-            indicateLEDContinuousXYZParameter(i8SubMenuState, u8CurrentParameter);
+            u16CurrentParameter = getCurrentLinearity(i8MainMenuState);
+            indicateLEDContinuousXYZParameter(i8SubMenuState, u16CurrentParameter);
             break;
         case QUANTIZATION:
-            u8CurrentParameter = getCurrentQuantization(i8MainMenuState);
-            setLEDState(u8StandardSubMenuMapping[u8CurrentParameter], ON);
+            u16CurrentParameter = getCurrentQuantization(i8MainMenuState);
+            setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], ON);
             break;
         case SLEW_RATE:
-            u8CurrentParameter = getCurrentSlewRate(i8MainMenuState);
-            indicateLEDContinuousXYZParameter(i8SubMenuState, u8CurrentParameter);
+            u16CurrentParameter = getCurrentSlewRate(i8MainMenuState);
+            u16CurrentParameter = MAX_SLEW_RATE - u16CurrentParameter;
+            indicateLEDContinuousXYZParameter(i8SubMenuState, u16CurrentParameter);
             break;
         case TRACK_BEHAVIOR:
-            u8CurrentParameter = getCurrentTrackBehavior(i8MainMenuState);
-            setLEDState(u8StandardSubMenuMapping[u8CurrentParameter], ON);
+            u16CurrentParameter = getCurrentTrackBehavior(i8MainMenuState);
+            setLEDState(u8StandardSubMenuMapping[u16CurrentParameter], ON);
             break;
         default:
             break;
     }
-    u8MenuEntryParameter = u8CurrentParameter;
+    u8MenuEntryParameter = u16CurrentParameter;
 }
 
 void editXYZParameter(uint8_t u8Mode){
@@ -937,6 +947,9 @@ void editXYZParameter(uint8_t u8Mode){
             break;
         case SLEW_RATE:
             u16CurrentParameter = getCurrentSlewRate(i8MainMenuState);
+            //Invert the setting because it's backwards.
+            //if it's 32, indicate 1024 - 32 = 982
+            u16CurrentParameter = MAX_SLEW_RATE - u16CurrentParameter;
             if(i8IncDecFlag){
                 u16CurrentParameter += SLEW_RATE_INCREMENT;
                 if(u16CurrentParameter > MAX_SLEW_RATE){
@@ -949,6 +962,7 @@ void editXYZParameter(uint8_t u8Mode){
                 }
             }
             indicateLEDContinuousXYZParameter(u8Mode, u16CurrentParameter);
+            u16CurrentParameter = MAX_SLEW_RATE - u16CurrentParameter;
             setCurrentSlewRate(i8MainMenuState, u16CurrentParameter);
             break;
         case TRACK_BEHAVIOR:
@@ -1040,14 +1054,18 @@ void changeMainMenuState(void){
     setLEDState(u8LEDMainMenuMapping[i8MainMenuState], BLINK);
 }
 
+void encoderInit(void){
+    u8encALastState = READ_ENCODER_A;
+    u8encBLastState = READ_ENCODER_B;
+}
 
 void encoderHandler(uint16_t u16newState){
     uint8_t u8encAState,
             u8encBState;
 
     //Figure out which channel changed
-    u8encAState = u16newState & (1<<ROTARY_ENC_A_PIN);
-    u8encBState = u16newState & (1<<ROTARY_ENC_B_PIN);
+    u8encAState = READ_ENCODER_A;
+    u8encBState = READ_ENCODER_B;
     if(u8encALastState != u8encAState){//A Changed
         if(u8encALastState)
             if(u8encBState){

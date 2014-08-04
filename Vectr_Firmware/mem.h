@@ -33,6 +33,9 @@ enum{
 #define NUMBER_OF_DATA_ITEMS    6
 #define NUMBER_OF_DATA_BYTES    12 //X,Y,Z Position for two samples
 
+#define RAM_SIZE_512K 1
+
+
 #ifdef RAM_SIZE_512K
     #define LENGTH_OF_RAM_ADDRESS   2 //BYTES
     #define LENGTH_OF_DMA_MESSAGE   15

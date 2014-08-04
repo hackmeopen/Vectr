@@ -12,8 +12,8 @@
 #include "queue.h"
 
 typedef struct{
-    uint8_t u8Port;
-    uint8_t u8PortState;
+    uint16_t u16Port;
+    uint16_t u16PortState;
 }portChangeStruct;
 
 //Main Menu States
@@ -73,6 +73,7 @@ void menuHandlerInit(void);
 void encoderHandler(uint16_t u16newState);
 void setMenuKeyPressFlag(void);
 void encoderLiveInteraction(void);
+void encoderInit(void);
 
 #endif	/* MENU_H */
 

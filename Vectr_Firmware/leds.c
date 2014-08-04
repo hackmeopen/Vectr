@@ -716,6 +716,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
                     //Scale it according to the maximum brightness
                     u32_result *= MAX_BRIGHTNESS;
                     u32_result /= DISTANCE_LIMIT;
+
                     u16BlueLEDDutyCycleBuffer[u8_index] = (uint16_t) u32_result;
                 }
                 else{
@@ -735,7 +736,4 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
     if(u16_ZPosition != 0){
             u16_red_LED_duty_cycle = (u16_ZPosition*MAX_BRIGHTNESS/MAX_LOCATION);
     }
-//    else{
-//            u16_red_LED_duty_cycle = 0;
-//    }
 }

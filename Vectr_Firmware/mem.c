@@ -145,7 +145,7 @@ void setDMAState(uint8_t u8NewDMAState){
 #ifdef RAM_SIZE_512K
             PLIB_DMA_ChannelXDisable(DMA_ID_0,SPI_MEM_TX_DMA_CHANNEL);
             PLIB_DMA_ChannelXSourceStartAddressSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, (uint32_t) (&LoadStoreBuffer.u8SPIMessage[1]));
-            PLIB_DMA_ChannelXSourceSizeSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, sizeof(LoadStoreBuffer) - 1);
+            PLIB_DMA_ChannelXSourceSizeSet(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL, sizeof(LoadStoreBuffer)-1);
 
             PLIB_DMA_ChannelXDisable(DMA_ID_0,SPI_MEM_RX_DMA_CHANNEL);
             PLIB_DMA_ChannelXDestinationStartAddressSet(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL, (uint32_t) (&LoadStoreBuffer.u8SPIMessage[1]));

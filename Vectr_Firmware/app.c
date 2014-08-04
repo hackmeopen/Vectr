@@ -229,6 +229,7 @@ void APP_Initialize ( void )
 
 void vTaskMasterControl(void* pvParameters){
 
+    RCON = 0;
     vTaskDelay(1500*TICKS_PER_MS);
 
     ENABLE_SAMPLE_TIMER_INT;
@@ -435,6 +436,8 @@ void setClockEnableFlag(uint8_t u8NewState){
 void vTIM3InterruptHandler(void){
     uint8_t u8ResetFlag = getResetFlag();
 
+    CLEAR_CLOCK_TIMER_INT;
+
     if(u8ClockEnableFlag == TRUE){
         if(u8ResetFlag == TRUE){
             if(getCurrentGateMode() == RESET_GATE){
@@ -442,6 +445,8 @@ void vTIM3InterruptHandler(void){
                 u8GatePulseFlag = TRUE;
             }
 
+            SET_LOOP_SYNC_OUT;
+            u8ClockPulseFlag = TRUE;
             u32ClockTimer = 0;
             clearResetFlag();
         }
@@ -469,8 +474,9 @@ vTIM5InterruptHandler(void){
         CLEAR_LOOP_SYNC_OUT;
     }
 
-    if(getGatePulseFlag() == TRUE){
-        SET_GATE_OUT_PORT;
+    if(u8GatePulseFlag == TRUE){
+        CLEAR_GATE_OUT_PORT;
+        u8GatePulseFlag = FALSE;
     }
 
     xSemaphoreGiveFromISR(xSemaphoreSampleTimer, &xHigherPriorityTaskWoken);
@@ -597,22 +603,22 @@ void vPinChangeInterruptHandler(void){
     portChangeStruct portChangeData;
 
     if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_CHANGE_NOTICE_E)){
-        portChangeData.u8Port = PORT_CHANNEL_E;
-        portChangeData.u8PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_E);
+        portChangeData.u16Port = PORT_CHANNEL_E;
+        portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_E);
         xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
         CLEAR_PORT_E_CHANGE_INTERRUPT;
         
     }
     if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_CHANGE_NOTICE_F)){
-        portChangeData.u8Port = PORT_CHANNEL_F;
-        portChangeData.u8PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_F);
+        portChangeData.u16Port = PORT_CHANNEL_F;
+        portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_F);
         xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
         CLEAR_PORT_F_CHANGE_INTERRUPT;
     }
 
     if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_CHANGE_NOTICE_D)){
-        portChangeData.u8Port = PORT_CHANNEL_D;
-        portChangeData.u8PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_D);
+        portChangeData.u16Port = PORT_CHANNEL_D;
+        portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_D);
         CLEAR_PORT_D_CHANGE_INTERRUPT;
         xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
     }
@@ -672,10 +678,10 @@ void vDMA3InterruptHandler(void){
 void vTaskIOHandler(void* pvParameters){
     portChangeStruct portChangeData;
     uint8_t u8Flag;
-    uint8_t u8PortDState,
-            u8PortEState,
+    uint16_t u16PortDState,
+            u16PortDLastState;
+    uint8_t u8PortEState,
             u8PortFState,
-            u8PortDLastState,
             u8PortELastState,
             u8PortFLastState;
     static  uint8_t u8PlayInState,
@@ -685,8 +691,10 @@ void vTaskIOHandler(void* pvParameters){
                 u8ModJackDetectState;
     io_event_message event_message;
 
-    event_message.u8message = RECORD_IN_EVENT;
-    event_message.u8messageType = NO_TRIGGER;
+    encoderInit();
+
+    event_message.u16message = RECORD_IN_EVENT;
+    event_message.u16messageType = NO_TRIGGER;
 
     ENABLE_ROTARY_ENC_SWITCH_INT;
 
@@ -697,9 +705,9 @@ void vTaskIOHandler(void* pvParameters){
         if(xQueueReceive(xIOPinChangeQueue, &portChangeData, portMAX_DELAY)){
 
             //Which port changed?
-            if(portChangeData.u8Port == PORT_CHANNEL_E){
+            if(portChangeData.u16Port == PORT_CHANNEL_E){
 
-                u8PortEState = portChangeData.u8PortState;
+                u8PortEState = portChangeData.u16PortState;
 
                 //Figure out which pin caused the change and handle it
                 if(((u8PortELastState & (1<<ROTARY_ENC_A_PIN)) != (u8PortEState & (1<<ROTARY_ENC_A_PIN))) ||
@@ -710,8 +718,8 @@ void vTaskIOHandler(void* pvParameters){
                 if((u8PortELastState & (1<<RECORD_IN_PIN)) != (u8PortEState & (1<<RECORD_IN_PIN))){
                     //Record in starts and stops recording
                     u8RecordInState = (u8PortEState & (1<<RECORD_IN_PIN))>>RECORD_IN_PIN;
-                    event_message.u8message = RECORD_IN_EVENT;
-                    event_message.u8messageType = u8RecordInState;
+                    event_message.u16messageType = RECORD_IN_EVENT;
+                    event_message.u16message = u8RecordInState;
                     xQueueSend(xIOEventQueue, &event_message, 0);
                 }
 
@@ -719,8 +727,8 @@ void vTaskIOHandler(void* pvParameters){
                     //Direction pin reverses playback direction
                     u8SyncInState = (u8PortEState & (1<<SYNC_IN_PIN))>>SYNC_IN_PIN;
                     if(u8SyncInState == 1){
-                        event_message.u8message = SYNC_IN_EVENT;
-                        event_message.u8messageType = u8SyncInState;
+                        event_message.u16messageType = SYNC_IN_EVENT;
+                        event_message.u16message = u8SyncInState;
                         xQueueSend(xIOEventQueue, &event_message, 0);
                     }
                 }
@@ -728,34 +736,34 @@ void vTaskIOHandler(void* pvParameters){
                 u8PortELastState = u8PortEState;
 
             }
-            else if(portChangeData.u8Port == PORT_CHANNEL_F){
-                u8PortFState = portChangeData.u8PortState;
+            else if(portChangeData.u16Port == PORT_CHANNEL_F){
+                u8PortFState = portChangeData.u16PortState;
 
                 u8PlayInState = (u8PortFState & (1<<PLAY_IN_PIN))>>PLAY_IN_PIN;
-                event_message.u8message = PLAYBACK_IN_EVENT;
-                event_message.u8messageType = u8PlayInState;
+                event_message.u16messageType = PLAYBACK_IN_EVENT;
+                event_message.u16message = u8PlayInState;
                 xQueueSend(xIOEventQueue, &event_message, 0);
 
                 u8PortFLastState = u8PortFState;
             }
             else{
-                u8PortDState = portChangeData.u8PortState;
+                u16PortDState = portChangeData.u16PortState;
 
-                if((u8PortDLastState & (1<<HOLD_PIN)) != (u8PortDState & (1<<HOLD_PIN))){
+                if((u16PortDLastState & (1<<HOLD_PIN)) != (u16PortDState & (1<<HOLD_PIN))){
                     //Hold input freezes the input when high, normal running when low but the logic
                     //here is inverted.
-                    u8HoldState = (u8PortDState & (1<<HOLD_PIN))>>HOLD_PIN;
-                    event_message.u8message = HOLD_IN_EVENT;
-                    event_message.u8messageType = u8HoldState;
+                    u8HoldState = (u16PortDState & (1<<HOLD_PIN))>>HOLD_PIN;
+                    event_message.u16messageType = HOLD_IN_EVENT;
+                    event_message.u16message = u8HoldState;
                     xQueueSend(xIOEventQueue, &event_message, 0);
                 }
-                else if((u8PortDLastState & (1<<JACK_DETECT_PIN)) != (u8PortDState & (1<<JACK_DETECT_PIN))){
-                    u8ModJackDetectState = (u8PortDState & (1<<JACK_DETECT_PIN))>>JACK_DETECT_PIN;
-                    event_message.u8message = JACK_DETECT_IN_EVENT;
-                    event_message.u8messageType = u8ModJackDetectState;
+                else if((u16PortDLastState & (1<<JACK_DETECT_PIN)) != (u16PortDState & (1<<JACK_DETECT_PIN))){
+                    u8ModJackDetectState = (u16PortDState & (1<<JACK_DETECT_PIN))>>JACK_DETECT_PIN;
+                    event_message.u16messageType = JACK_DETECT_IN_EVENT;
+                    event_message.u16message = u8ModJackDetectState;
                     xQueueSend(xIOEventQueue, &event_message, 0);
                 }
-                u8PortDLastState = u8PortDState;
+                u16PortDLastState = u16PortDState;
             }
         }
         

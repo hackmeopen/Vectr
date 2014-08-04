@@ -68,8 +68,8 @@ enum{
  */
 
 typedef struct{
-    uint8_t u8messageType;//Which input?
-    uint8_t u8message;//What happened?
+    uint16_t u16messageType;//Which input?
+    uint16_t u16message;//What happened?
 }io_event_message;
 
 enum{
@@ -201,7 +201,9 @@ enum{
 #define MIN_SLEW_RATE   0
 #define MID_SLEW_RATE   512
 #define MAX_SLEW_RATE   1024
+#define SLEW_RATE_LED_INCREMENT 256
 #define SLEW_RATE_INCREMENT 8
+#define SLEW_RATE_LED_SCALING   2
 
 #define LINEARITY_MIN       0   //Pure log
 #define LINEARITY_STRAIGHT  64  //Linear
@@ -306,7 +308,7 @@ uint8_t getCurrentSequenceIndex(void);
 uint16_t getCurrentLinearity(uint8_t u8Index);
 void setCurrentLinearity(uint8_t u8Index, uint8_t u8NewValue);
 uint16_t getCurrentSlewRate(uint8_t u8Index);
-void setCurrentSlewRate(uint8_t u8Index, uint8_t u8NewValue);
+void setCurrentSlewRate(uint8_t u8Index, uint16_t u16NewValue);
 uint8_t getCurrentTrackBehavior(uint8_t u8Index);
 void setCurrentTrackBehavior(uint8_t u8Index, uint8_t u8NewValue);
 uint32_t getNextClockPulseIndex(void);

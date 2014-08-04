@@ -10,14 +10,12 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Find the bug - related to stopped playback, hold or something.
+//TODO Make sure modulation jack detect checks the jack at power up.
+//TODO Test clock during overdub
 //TODO Make sure that the SYNC input can be used to reverse direction in FLIP mode.
 //TODO Check retrigger playback behavior with the switch. Make sure it retriggers.
 //TODO Test Effects - Test scrub clocks and with flash
-//TODO Test slew rate menu adjustment
 //TODO Test Air Scratch - change speed and direction
-//TODO Test jack detection with final sample
-//TODO Test with 512k RAM with final sample
 //TODO Include Bootloader
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -74,7 +72,6 @@ static pos_and_gesture_data * p_mem_pos_and_gesture_struct;
 static pos_and_gesture_data * p_overdub_pos_and_gesture_struct;
 static pos_and_gesture_data hold_position_struct;
 
-
 static uint8_t u8BufferDataCount = 0;
 
 static memory_data_packet memBuffer;
@@ -88,7 +85,6 @@ static uint32_t u32NextClockPulseIndex;
 
 static uint16_t u16LastScratchPosition;
 static uint32_t u32ScratchNeutralSpeed;
-
 
 typedef struct{
     uint8_t u8GestureFlag;
@@ -259,15 +255,15 @@ void MasterControlStateMachine(void){
       on this queue. They should set flags so the appropriate action can be taken in each
      of the different states.*/
     if(xQueueReceive(xIOEventQueue, &event_message, 0)){
-       switch(event_message.u8messageType){
+       switch(event_message.u16messageType){
            case RECORD_IN_EVENT:
-               u8RecordTrigger = event_message.u8message;
+               u8RecordTrigger = event_message.u16message;
                break;
            case PLAYBACK_IN_EVENT:
-               u8PlayTrigger = event_message.u8message;
+               u8PlayTrigger = event_message.u16message;
                break;
            case HOLD_IN_EVENT:
-               u8HoldTrigger = event_message.u8message;
+               u8HoldTrigger = event_message.u16message;
                if(u8HoldTrigger == TRIGGER_WENT_HIGH){
                    u8HoldActivationFlag = HOLD_ACTIVATE;
                }else{
@@ -275,12 +271,12 @@ void MasterControlStateMachine(void){
                }
                break;
            case SYNC_IN_EVENT:
-               u8SyncTrigger = event_message.u8message;
+               u8SyncTrigger = event_message.u16message;
                break;
            case JACK_DETECT_IN_EVENT:
                /*If the modulation mode is SCRUB, we disable the clock timer and
                  otherwise, it's enabled.*/
-               if(event_message.u8message == 1){
+               if(event_message.u16message == 1){
                    u16ModulationOnFlag = FALSE;
                    if(p_VectrData->u8ModulationMode == SCRUB){
                        setClockEnableFlag(TRUE);
@@ -1013,38 +1009,40 @@ void MasterControlStateMachine(void){
 void runPlaybackMode(void){
 
    if(u8PlaybackRunFlag == RUN){
-        if(u8BufferDataCount == 0){
-            xQueueReceive(xRAMReadQueue, &memBuffer, 0);
+       if(u8HoldState == OFF){
+            if(u8BufferDataCount == 0){
+                xQueueReceive(xRAMReadQueue, &memBuffer, 0);
 
-            if(getStoredSequenceLocationFlag() == STORED_IN_RAM){
-                if(getRAMReadAddress() == 0){
-                    setResetFlag();
+                if(getStoredSequenceLocationFlag() == STORED_IN_RAM){
+                    if(getRAMReadAddress() == 0){
+                        setResetFlag();
+                    }
+                }else{
+                    if(getFlashReadAddress() == getMemoryStartAddress()){
+                        setResetFlag();
+                    }
                 }
-            }else{
-                if(getFlashReadAddress() == getMemoryStartAddress()){
-                    setResetFlag();
-                }
+
+                p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
+                u8BufferDataCount++;
+            }
+            else{
+                p_mem_pos_and_gesture_struct = &memBuffer.sample_2;
+                u8MemCommand = READ_RAM;
+                xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
+                u8BufferDataCount = 0;
             }
 
-            p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
-            u8BufferDataCount++;
-        }
-        else{
-            p_mem_pos_and_gesture_struct = &memBuffer.sample_2;
-            u8MemCommand = READ_RAM;
-            xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
-            u8BufferDataCount = 0;
-        }
+       }
+       else{
+        /*If hold is active, execute the hold behavior*/
+            holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
+       }
 
-        slewPosition(p_mem_pos_and_gesture_struct);
+       slewPosition(p_mem_pos_and_gesture_struct);
 
         if(u16ModulationOnFlag == TRUE){
             runModulation(p_mem_pos_and_gesture_struct);
-        }
-
-        /*If hold is active, execute the hold behavior*/
-        if(u8HoldState == ON){
-            holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
         }
 
         xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
@@ -1063,11 +1061,14 @@ void runPlaybackMode(void){
 
    /*Check encoder activations. Could go to live play or implement a hold*/
     if(u8HoldActivationFlag == HOLD_ACTIVATE){
+
         u8HoldState = ON;
+        STOP_CLOCK_TIMER;
         setHoldPosition(p_mem_pos_and_gesture_struct);
         u8HoldActivationFlag = FALSE;
     }
     else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
+        START_CLOCK_TIMER;
         u8HoldState = OFF;
     }
     else if(u8LivePlayActivationFlag == TRUE){
@@ -1075,7 +1076,7 @@ void runPlaybackMode(void){
         u8HoldState = OFF;
         if(u8OperatingMode != SEQUENCING){
             u8OperatingMode = LIVE_PLAY;
-            u8PlaybackRunFlag = FALSE;
+            setPlaybackRunStatus(STOP);
         }
         u8LivePlayActivationFlag = FALSE;
     }
@@ -1229,7 +1230,7 @@ void calculateClockTimer(uint32_t u32PlaybackSpeed){
      count to a number higher by that multiple to get the correct number of cycles to trigger
      the clock pulse.
      This gives us the length of the cycle in terms of the speed of the clock timer.*/
-    u32ClockTimerTriggerCount = u32LengthOfSequence * u16Multiple;
+    u32ClockTimerTriggerCount = u32LengthOfSequence << u16Multiple;
 
     /*Now, divide by the number of clock pulses per cycle.
      This is the number we must count up to in the interrupt routine.*/
@@ -1887,14 +1888,14 @@ void finishRecording(void){
     u8RecordRunFlag = FALSE;
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
-    calculateNextClockPulse();
+    calculateClockTimer(u32PlaybackSpeed);
                     
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
         resetRAMReadAddress();
         u8BufferDataCount = 0;
         u8OperatingMode = PLAYBACK;
-        u8PlaybackRunFlag = RUN;
+        setPlaybackRunStatus(RUN);
         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
     }
     else{//Regular trigger mode ends recording without starting playback and stays in record mode.
@@ -1951,7 +1952,7 @@ void switchStateMachine(void){
                     if(u8SequenceRecordedFlag == TRUE){
                         if(p_VectrData->u8Source[PLAY] == SWITCH){
                             u8OperatingMode = PLAYBACK;
-                            u8PlaybackRunFlag = RUN;
+                            setPlaybackRunStatus(RUN);
                             u8HoldState = OFF;//Turn off hold to start playback.
                         }
                         else{//external control = arm playback
@@ -2062,11 +2063,11 @@ void switchStateMachine(void){
                         if(p_VectrData->u8PlaybackMode != FLIP &&
                            p_VectrData->u8PlaybackMode != RETRIGGER){
                             if(u8PlaybackRunFlag != RUN){
-                                u8PlaybackRunFlag = RUN;
+                                setPlaybackRunStatus(RUN);
                                 u8HoldState = OFF;//Turn off any hold.
                             }
                             else{
-                                u8PlaybackRunFlag = STOP;
+                                setPlaybackRunStatus(STOP);
                             }
                         }
                         else if(p_VectrData->u8PlaybackMode == FLIP){//Flip playback mode
@@ -2608,8 +2609,8 @@ uint16_t getCurrentSlewRate(uint8_t u8Index){
     return p_VectrData->u16SlewRate[u8Index];
 }
 
-void setCurrentSlewRate(uint8_t u8Index, uint8_t u8NewValue){
-    p_VectrData->u16SlewRate[u8Index] = u8NewValue;
+void setCurrentSlewRate(uint8_t u8Index, uint16_t u16NewValue){
+    p_VectrData->u16SlewRate[u8Index] = u16NewValue;
 }
 
 uint8_t getCurrentTrackBehavior(uint8_t u8Index){
@@ -2648,8 +2649,8 @@ void setPlaybackRunStatus(uint8_t u8NewState){
         START_CLOCK_TIMER;
     }
     else{
-        setSwitchLEDState(SWITCH_LED_OFF);
         STOP_CLOCK_TIMER;
+        setSwitchLEDState(SWITCH_LED_OFF);
     }
 }
 
