@@ -14,7 +14,7 @@
 //TODO Test clock during overdub
 //TODO Make sure that the SYNC input can be used to reverse direction in FLIP mode.
 //TODO Check retrigger playback behavior with the switch. Make sure it retriggers.
-//TODO Test Effects - Test scrub clocks and with flash
+//TODO Test scrub and trim with clocks and with flash
 //TODO Test Air Scratch - change speed and direction
 //TODO Include Bootloader
 
@@ -1039,11 +1039,13 @@ void runPlaybackMode(void){
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
        }
 
-       slewPosition(p_mem_pos_and_gesture_struct);
-
-        if(u16ModulationOnFlag == TRUE){
+       if(u16ModulationOnFlag == TRUE){
             runModulation(p_mem_pos_and_gesture_struct);
         }
+
+       slewPosition(p_mem_pos_and_gesture_struct);
+
+        
 
         xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
         mutePosition(p_mem_pos_and_gesture_struct);
@@ -1497,19 +1499,23 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
 
     /*Get the ADC data and make some change based on it.*/
     if(xQueueReceive(xADCQueue, &u16ADCData, 0)){
-        if(u16ADCData != u16LastADCData){
+        
             switch(p_VectrData->u8ModulationMode){
                 case SPEED:
-                    adjustSpeedModulation(u16ADCData>>2);
+                    if(u16ADCData != u16LastADCData){
+                        adjustSpeedModulation(u16ADCData>>2);
+                    }
                     break;
                 case QUANTIZED_SPEED:
-                    //There are 16 speeds. Reduce down to 4 bits.
-                    u16Temp = u16ADCData>>8;
-                    u32PlaybackSpeed = u32QuantizedSpeedTable[u16Temp];
-                    SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-                    RESET_SAMPLE_TIMER;
-                    /*Adjust the clock timer accordingly.*/
-                    calculateClockTimer(u32PlaybackSpeed);
+                    if(u16ADCData != u16LastADCData){
+                        //There are 16 speeds. Reduce down to 4 bits.
+                        u16Temp = u16ADCData>>8;
+                        u32PlaybackSpeed = u32QuantizedSpeedTable[u16Temp];
+                        SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+                        RESET_SAMPLE_TIMER;
+                        /*Adjust the clock timer accordingly.*/
+                        calculateClockTimer(u32PlaybackSpeed);
+                    }
                     break;
                 case SCRUB:
                     /*Play the sequence with CV. We must know the length
@@ -1521,13 +1527,6 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
                      * If the ADC value went up, then the playback is going forwards.
                      */
 
-                    if(u16LastADCData < u16ADCData){
-                        setPlaybackDirection(REVERSE_PLAYBACK);
-                    }
-                    else{
-                        setPlaybackDirection(FORWARD_PLAYBACK);
-                    }
-
                     u32SequenceLength = getActiveSequenceLength();
 
                     /*The new sequence position is the determined by the ADC reading.*/
@@ -1535,13 +1534,18 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
                     u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
 
                     /*Check if it's time for a clock pulse.*/
-                    u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
-                    u16Modulus = u32NewReadAddress%u16Divisor;
-                    if(u16Modulus <= 3){
+                    if(u32NewReadAddress != 0){
+                        u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
+                        u16Modulus = u32NewReadAddress%u16Divisor;
+
+                        if(u16Modulus <= 3){
+                            SET_LOOP_SYNC_OUT;
+                        }
+                        else{
+                            CLEAR_LOOP_SYNC_OUT;
+                        }
+                    }else{
                         SET_LOOP_SYNC_OUT;
-                    }
-                    else{
-                        CLEAR_LOOP_SYNC_OUT;
                     }
 
                     /*Set the new read position.*/
@@ -1587,11 +1591,30 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
                     }
 
                     for(i=0; i<NUM_OF_AXES;i++){
-                        u32PositionTemp = u16CurrentPosition[i];
+                        
+                        if(u16CurrentPosition[i] > HALF_OUTPUT_VALUE){
+                            u32PositionTemp = u16CurrentPosition[i] - HALF_OUTPUT_VALUE;
+                        }
+                        else{
+                            u32PositionTemp = HALF_OUTPUT_VALUE - u16CurrentPosition[i];
+                        }
                         u32PositionTemp *= u16Attenuation;
-                        u32PositionTemp >>= 12;
+                        u32PositionTemp >>= 11;
                         if(u8InversionFlag == TRUE){
-                            u32PositionTemp = MAXIMUM_OUTPUT_VALUE - u32PositionTemp;
+                            if(u16CurrentPosition[i] > HALF_OUTPUT_VALUE){
+                                u32PositionTemp = HALF_OUTPUT_VALUE - u32PositionTemp;
+                            }
+                            else{
+                                u32PositionTemp = HALF_OUTPUT_VALUE + u32PositionTemp;
+                            }
+                        }
+                        else{
+                            if(u16CurrentPosition[i] > HALF_OUTPUT_VALUE){
+                                u32PositionTemp = HALF_OUTPUT_VALUE + u32PositionTemp;
+                            }
+                            else{
+                                u32PositionTemp = HALF_OUTPUT_VALUE - u32PositionTemp;
+                            }
                         }
                         u16CurrentPosition[i] = u32PositionTemp;
 
@@ -1608,7 +1631,6 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
 
             u16LastADCData = u16ADCData;
         }
-    }
 
 }
 
