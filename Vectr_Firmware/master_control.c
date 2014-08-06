@@ -208,6 +208,10 @@ void MasterControlInit(void){
     CLEAR_GATE_OUT_PORT;
     CLEAR_LOOP_SYNC_OUT;
 
+    if(MODULATION_JACK_PLUGGED_IN){
+        u16ModulationOnFlag = TRUE;
+    }
+
     p_VectrData = &VectrData;
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
 }
@@ -1010,6 +1014,12 @@ void MasterControlStateMachine(void){
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateMuteModeFlag(FALSE);
                             u8OperatingMode =  u8PreviousOperatingMode;
+                            if(u8OperatingMode == PLAYBACK && u8PlaybackRunFlag == TRUE){
+                                setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                            }
+                            else{
+                                setSwitchLEDState(SWITCH_LED_OFF);
+                            }
                             break;
                         default:
                             break;
@@ -1296,6 +1306,7 @@ void enterAirScratchMode(void){
     u8OperatingMode = AIR_SCRATCHING;
     u8AirScratchRunFlag = FALSE;
     u16CurrentScratchSpeedIndex = u16PlaybackSpeedTableIndex;
+    setSwitchLEDState(SWITCH_LED_RED_GREEN_ALTERNATING);
 }
 
 void enterMuteMode(void){

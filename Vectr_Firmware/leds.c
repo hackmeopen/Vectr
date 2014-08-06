@@ -447,19 +447,32 @@ void setSwitchLEDState(uint8_t u8NewState){
             SET_SWITCH_LED_RED;
             u8SwitchLEDBlinkState = TRUE;
             break;
+        case SWITCH_LED_RED_GREEN_ALTERNATING:
+            break;
+        default:
+            break;
     }
 }
 
 void BlinkSwitchLED(void){
     u8SwitchLEDBlinkState ^= 1;
-    if(u8SwitchLEDBlinkState == FALSE){
-        SET_SWITCH_LED_OFF;
-    }
-    else{
-        if(u8SwitchLEDState == SWITCH_LED_GREEN_BLINKING){
-            SET_SWITCH_LED_GREEN;
-        }else{
+    if(u8SwitchLEDState != SWITCH_LED_RED_GREEN_ALTERNATING){
+        if(u8SwitchLEDBlinkState == FALSE){
+            SET_SWITCH_LED_OFF;
+        }
+        else{
+            if(u8SwitchLEDState == SWITCH_LED_GREEN_BLINKING){
+                SET_SWITCH_LED_GREEN;
+            }else{
+                SET_SWITCH_LED_RED;
+            }
+        }
+    }else{
+        if(u8SwitchLEDBlinkState == FALSE){
             SET_SWITCH_LED_RED;
+        }
+        else{
+            SET_SWITCH_LED_GREEN;
         }
     }
 }

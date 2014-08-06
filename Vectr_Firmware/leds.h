@@ -91,7 +91,8 @@ enum{
     SWITCH_LED_GREEN,
     SWITCH_LED_RED,
     SWITCH_LED_GREEN_BLINKING,
-    SWITCH_LED_RED_BLINKING
+    SWITCH_LED_RED_BLINKING,
+    SWITCH_LED_RED_GREEN_ALTERNATING
 };
 
 extern const led_parameters led_parameter_array[NUM_OF_BLUE_LEDS];
