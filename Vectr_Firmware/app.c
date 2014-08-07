@@ -237,6 +237,7 @@ void vTaskMasterControl(void* pvParameters){
     setSwitchLEDState(SWITCH_LED_GREEN);
 
     for(;;){
+
         MasterControlStateMachine();
     }
 }
