@@ -15,7 +15,6 @@
 //TODO Make sure that the SYNC input can be used to reverse direction in FLIP mode.
 //TODO Check retrigger playback behavior with the switch. Make sure it retriggers.
 //TODO Test scrub and trim with clocks and with flash
-//TODO Indicate Air Scratch Mode with Alternating Switch LED
 //TODO Include Bootloader
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM

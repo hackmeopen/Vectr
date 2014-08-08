@@ -25,8 +25,8 @@ extern const uint32_t u32LogSpeedTable[	1024];
 #define BIT_SHIFT_TO_LOG_TABLE 6
 #define MAX_LOG_TABLE_VALUE 65535
 #define LENGTH_OF_SPEED_TABLE   1024
-#define ZERO_SPEED_INDEX    210 //Standard speed.
-#define ZERO_SPEED_VALUE    399999
+#define ZERO_SPEED_INDEX    511 //Standard speed.
+#define ZERO_SPEED_VALUE    239999
 
 #endif	/* QUANTIZATION_TABLES_H */
 
