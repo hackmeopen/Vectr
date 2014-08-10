@@ -10,10 +10,9 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Make sure modulation jack detect checks the jack at power up.
+//TODO Verify reverse playback works as advertised.
+//TODO Test everything with overdub. Playback triggers, recording triggers
 //TODO Test clock during overdub
-//TODO Make sure that the SYNC input can be used to reverse direction in FLIP mode.
-//TODO Check retrigger playback behavior with the switch. Make sure it retriggers.
 //TODO Test scrub and trim with clocks and with flash
 //TODO Include Bootloader
 
@@ -448,6 +447,32 @@ void MasterControlStateMachine(void){
                     xQueueSend(xRAMWriteQueue, &memBuffer, 0);
                 }
             }
+            else{
+               pos_and_gesture_struct.u16XPosition = memBuffer.sample_1.u16XPosition;
+               pos_and_gesture_struct.u16YPosition = memBuffer.sample_1.u16YPosition;
+               pos_and_gesture_struct.u16ZPosition = memBuffer.sample_1.u16ZPosition;
+            }
+
+            if(u8MessageReceivedFlag == TRUE){
+                /*Decode touch and gestures. If a double tap on the bottom occurs,
+                 * enter menu mode*/
+                u16TouchData = pos_and_gesture_struct.u16Touch;
+                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){
+                    u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
+                    u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
+                    switch(u8GestureFlag){
+                        case MENU_MODE:
+                            if(u8MenuModeFlag == FALSE){
+                                u8MenuModeFlag = TRUE;
+                                menuHandlerInit();
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+
            /*Check encoder activations. Could go to live play or implement a hold*/
             if(u8HoldActivationFlag == HOLD_ACTIVATE){
                 u8HoldState = ON;
@@ -470,7 +495,7 @@ void MasterControlStateMachine(void){
             }
 
             slewPosition(&pos_and_gesture_struct);
-            xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0); 
+            xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
             scaleRange(&pos_and_gesture_struct);
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
@@ -505,6 +530,7 @@ void MasterControlStateMachine(void){
                     u8PlayTrigger = NO_TRIGGER;
                     u8PlaybackArmedFlag = NOT_ARMED;
                     u8OperatingMode = PLAYBACK;
+                    setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                     u8PlaybackRunFlag = RUN;
                 }
             }
@@ -639,12 +665,13 @@ void MasterControlStateMachine(void){
                  * and not stop playback or start playback.
                  */
                 if(p_VectrData->u8PlaybackMode != FLIP &&
-                   p_VectrData->u8PlaybackMode != RETRIGGER){
+                   p_VectrData->u8PlaybackMode != RETRIGGER && p_VectrData->u8PlaybackMode != ONESHOT){
                     if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
                             && (u8PlayTrigger == TRIGGER_WENT_HIGH)){
                         u8PlaybackArmedFlag = NOT_ARMED;
                         /*Clear the trigger and start playback.*/
                         u8PlayTrigger = NO_TRIGGER;
+                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                         u8PlaybackRunFlag = RUN;
                     }
                 }else if(p_VectrData->u8PlaybackMode == FLIP){
@@ -656,9 +683,22 @@ void MasterControlStateMachine(void){
                     }
                 }
                 else{
-                    //Retrigger mode
-                    setRAMRetriggerFlag();
-                    u8PlaybackRunFlag = TRUE;
+                    if(u8PlayTrigger == TRIGGER_WENT_HIGH){
+                        //This if for one-shot mode and retrigger mode.
+                        if(p_VectrData->u8PlaybackMode == FLIP || u8PlaybackRunFlag == ENDED){
+                            setRAMRetriggerFlag();
+                            //Retrigger playback mode.
+                            setPlaybackRunStatus(RUN);
+                        }
+                        else{//One-shot mode
+                            if(u8PlaybackRunFlag == RUN){
+                              setPlaybackRunStatus(STOP);
+                            }
+                            else{
+                               setPlaybackRunStatus(RUN);
+                            }
+                        }
+                    }
                 }
             }
             else if(u8PlaybackArmedFlag == DISARMED){
@@ -668,6 +708,7 @@ void MasterControlStateMachine(void){
                     /*Clear the trigger and start playback.*/
                     u8PlayTrigger = NO_TRIGGER;
                     u8PlaybackRunFlag = STOP;
+                    setSwitchLEDState(SWITCH_LED_OFF);
                 }
             }
             if(u8RecordingArmedFlag == ARMED){
@@ -1086,9 +1127,22 @@ void runPlaybackMode(void){
    }
        
    if(u8SyncTrigger == TRUE){
-        setRAMRetriggerFlag();
-        u8SyncTrigger = FALSE;
+
+       if(p_VectrData->u8PlaybackMode != FLIP){
+           setRAMRetriggerFlag();
+
+       }else{
+           if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
+               setPlaybackDirection(REVERSE_PLAYBACK);
+           }
+           else{
+               setPlaybackDirection(FORWARD_PLAYBACK);
+           }
+       }
+
+       u8SyncTrigger = FALSE;
     }
+
 
    /*Check encoder activations. Could go to live play or implement a hold*/
     if(u8HoldActivationFlag == HOLD_ACTIVATE){
@@ -1956,6 +2010,7 @@ void finishRecording(void){
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
     calculateClockTimer(u32PlaybackSpeed);
+    setPlaybackDirection(FORWARD_PLAYBACK);
                     
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
@@ -1980,11 +2035,34 @@ void setHoldPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
 }
 
 void armRecording(void){
-    u8RecordingArmedFlag = ARMED;
+    if(u8RecordingArmedFlag != ARMED){
+        u8RecordingArmedFlag = ARMED;
+        setSwitchLEDState(SWITCH_LED_RED);
+    }else{
+        u8RecordingArmedFlag = NOT_ARMED;
+        if(u8PlaybackRunFlag == TRUE){
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        }
+        else{
+            setSwitchLEDState(SWITCH_LED_OFF);
+        }
+    }
+
 }
 
 void armPlayback(void){
-    u8PlaybackArmedFlag = ARMED;
+    if(u8PlaybackArmedFlag != ARMED){
+        u8PlaybackArmedFlag = ARMED;
+        setSwitchLEDState(SWITCH_LED_GREEN);
+    }else{
+        u8PlaybackArmedFlag = NOT_ARMED;
+        if(u8RecordRunFlag == TRUE){
+            setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+        }
+        else{
+            setSwitchLEDState(SWITCH_LED_OFF);
+        }
+    }
 }
 
 void disarmRecording(void){
@@ -2047,7 +2125,6 @@ void switchStateMachine(void){
                    }
                }
                else{
-                   //Main switch in menu mode should back out the menu..full exit is menu double tap
                    setMenuExitFlag();
                }
                 break;
@@ -2070,13 +2147,18 @@ void switchStateMachine(void){
                  * PLAY/EXT/GATE - Arm playback
                  * PLAY/EXT/TRIGGERAUTO - Start playback immediately, stop recording
                  */
-                if(p_VectrData->u8Source[PLAY] == SWITCH || p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
-                    u8OperatingMode = PLAYBACK;
-                    u8PlaybackRunFlag = RUN;
-                    resetRAMReadAddress();//Recording ends go to the beginning of the sequence
-                }
-                else{//external control = arm playback
-                    armPlayback();
+                if(u8MenuModeFlag == FALSE){
+                    if(p_VectrData->u8Source[PLAY] == SWITCH || p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
+                        u8OperatingMode = PLAYBACK;
+                        u8PlaybackRunFlag = RUN;
+                        resetRAMReadAddress();//Recording ends go to the beginning of the sequence
+                    }
+                    else{//external control = arm playback
+                        armPlayback();
+                    }
+                }else{
+                    //Menu mode encoder switch press navigates the menu.
+                    setMenuKeyPressFlag();
                 }
                 break;
             case MAIN_SWITCH_PRESSED://RECORDING
@@ -2085,18 +2167,27 @@ void switchStateMachine(void){
                  * REC/EXT/TRIGGER - Arm/disarm recording
                  * REC/EXT/GATE - Arm/disarm recording
                  */
-                if(p_VectrData->u8Source[RECORD] == SWITCH){
-                    finishRecording();
-                }
-                else{
-                    /*If recording is running, we disarm.
-                     If recording is not running, we arm it.*/
-                    if(u8RecordRunFlag == TRUE){
-                        disarmRecording();
+                if(u8MenuModeFlag == FALSE){
+                    if(p_VectrData->u8Source[RECORD] == SWITCH){
+                        if(u8RecordRunFlag == TRUE){
+                            finishRecording();
+                        }
+                        else{
+                            startNewRecording();
+                        }
                     }
                     else{
-                        armRecording();
+                        /*If recording is running, we disarm.
+                         If recording is not running, we arm it.*/
+                        if(u8RecordRunFlag == TRUE){
+                            disarmRecording();
+                        }
+                        else{
+                            armRecording();
+                        }
                     }
+                }else{
+                    setMenuExitFlag();
                 }
                 break;
             case ENC_SWITCH_RELEASED://RECORDING
@@ -2147,9 +2238,20 @@ void switchStateMachine(void){
                         }
                         else{
                             //This if for one-shot mode and retrigger mode.
-                            setRAMRetriggerFlag();
-                            //Retrigger playback mode.
-                            u8PlaybackRunFlag = RUN;
+                            if(p_VectrData->u8PlaybackMode == FLIP || u8PlaybackRunFlag == ENDED){
+                                setRAMRetriggerFlag();
+                                //Retrigger playback mode.
+                                setPlaybackRunStatus(RUN);
+                            }
+                            else{//One-shot mode
+                                if(u8PlaybackRunFlag == RUN){
+                                  setPlaybackRunStatus(STOP);
+                                }
+                                else{
+                                   setPlaybackRunStatus(RUN);
+                                }
+                            }
+                            
                         }
 
                         if(u8PlaybackRunFlag == RUN){
@@ -2190,7 +2292,7 @@ void switchStateMachine(void){
                        u8OperatingMode = RECORDING;
                        startNewRecording();
                     }else{
-                       armPlayback();
+                       armRecording();
                     }
                }
                else{
