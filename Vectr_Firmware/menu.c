@@ -351,6 +351,7 @@ void MenuStateMachine(void){
         u8MenuExitFlag = FALSE;
         setLEDAlternateFuncFlag(FALSE);//LEDs back to indicating position
         turnOffAllLEDs();//Reset the LEDs state
+        setRedLEDs(HALF_BRIGHTNESS);
         setMenuModeFlag(FALSE);//Master control knows menu is over
         u8ParameterEditModeFlag = FALSE;
         u8LoadModeFlag = FALSE;

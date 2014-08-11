@@ -873,6 +873,10 @@ void MasterControlStateMachine(void){
                     /*Clear the trigger and start playback.*/
                     u8RecordTrigger = NO_TRIGGER;
                     Flags.u8OverdubActiveFlag = TRUE;
+                    setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+                    setLEDAlternateFuncFlag(FALSE);
+                    turnOffAllLEDs();
+                    setIndicateOverdubModeFlag(FALSE);
                 }
             }
             else if(u8OverdubArmedFlag == DISARMED){
@@ -881,6 +885,15 @@ void MasterControlStateMachine(void){
                     /*Clear the trigger and start playback.*/
                     u8RecordTrigger = NO_TRIGGER;
                     Flags.u8OverdubActiveFlag = FALSE;
+                    setLEDAlternateFuncFlag(TRUE);
+                    turnOffAllLEDs();
+                    setIndicateOverdubModeFlag(TRUE);
+                    if(u8PlaybackRunFlag == TRUE){
+                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                    }
+                    else{
+                        setSwitchLEDState(SWITCH_LED_OFF);
+                    }
                 }
             }  
             /*Overdub - Keep track of airwheel data but don't do anything about it*/
@@ -2065,16 +2078,29 @@ void armPlayback(void){
     }
 }
 
+void armOverdub(void){
+    if(u8OverdubArmedFlag != ARMED){
+        u8OverdubArmedFlag = ARMED;
+        setSwitchLEDState(SWITCH_LED_RED);
+    }
+    else{
+        u8OverdubArmedFlag = NOT_ARMED;
+        //Handle the switch LED to indicate whether playback is running.
+        if(Flags.u8OverdubActiveFlag == TRUE){
+           setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        }
+        else{
+           setSwitchLEDState(SWITCH_LED_OFF);
+        }
+    }
+}
+
 void disarmRecording(void){
     u8RecordingArmedFlag = DISARMED;
 }
 
 void disarmPlayback(void){
     u8PlaybackArmedFlag = DISARMED;
-}
-
-void armOverdub(void){
-    u8OverdubArmedFlag = ARMED;
 }
 
 void disarmOverdub(void){
@@ -2317,20 +2343,16 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://OVERDUBBING
                 //Encoder switch press during overdub can start and stop playback
-                if(p_VectrData->u8Source[OVERDUB] == SWITCH){
-                    u8OverdubRunFlag ^= TRUE;
 
-                    if(u8OverdubRunFlag == TRUE){
-                        u8HoldState = OFF;//Turn off any hold
-                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                    }
-                    else{
-                        setSwitchLEDState(OFF);
-                    }
+                u8OverdubRunFlag ^= TRUE;
+
+                if(u8OverdubRunFlag == TRUE){
+                    u8HoldState = OFF;//Turn off any hold
+                    setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                 }
-//                }else{//External Control - Nothing for overdub
-//
-//                }
+                else{
+                    setSwitchLEDState(OFF);
+                }
                 break;
             case MAIN_SWITCH_PRESSED://OVERDUBBING
                 //Main switch press activates/deactivates overdub
@@ -2352,11 +2374,11 @@ void switchStateMachine(void){
                     }
                 }else{//External Control
                     if(Flags.u8OverdubActiveFlag == TRUE){
-                            disarmOverdub();
-                        }
-                        else{
-                            armOverdub();
-                        }
+                        disarmOverdub();
+                    }
+                    else{
+                        armOverdub();
+                    }
                 }  
                 break;
             case ENC_SWITCH_RELEASED://OVERDUBBING
