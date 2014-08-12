@@ -213,6 +213,7 @@ VectrDataStruct * setFileTableDataPointer(uint8_t u8Index);
 uint32_t getFlashFirstSampleAddress(void);
 uint32_t getFlashReadAddress(void);
 uint32_t getMemoryStartAddress(void);
+uint32_t getEndOfSequenceAddress(void);
 
 
 #endif	/* MEM_H */

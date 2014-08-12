@@ -302,6 +302,11 @@ uint8_t flashStoreSequence(uint8_t u8SequenceIndex, uint32_t u32SequenceLength){
      * 7. Repeat until the end of the sequence is reached.
      */
 
+    //Stop playback if it's running.
+    u8PlaybackRunStatus = getPlaybackRunStatus();
+
+    setPlaybackRunStatus(STOP);
+
     if(u8FlashWriteEnabledFlag == FALSE){
         flashClearWriteProtection();
     }
@@ -313,11 +318,6 @@ uint8_t flashStoreSequence(uint8_t u8SequenceIndex, uint32_t u32SequenceLength){
     if(u32SequenceLength > ftFileTable.u32AvailableMemorySpace){
         return 0;//failure
     }
-
-    //Stop playback if it's running.
-    u8PlaybackRunStatus = getPlaybackRunStatus();
-
-    setPlaybackRunStatus(STOP);
 
     /*For each sector, read out a sector from RAM. Then, erase the sector in Flash and
      write it over to Flash.*/
@@ -1004,74 +1004,7 @@ void writeRAM(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
     }
 }
 
-/*Write data to RAM using the DMA.*/
-void writeRAM_DMA(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
-    int i;
-    uint16_t * p_u8DataByte = &(mem_data->sample_1.u16XPosition);
-    uint8_t u8PlaybackDirection;
 
-    //Set up the DMA to read the file table section.
-    setDMAState(DMA_RAM);
-
-    /*Write the RAM. 32 bit operation appears broken!!!!!Have to do 8 bit.*/
-    /*Set up to write. This procedure writes two samples worth of data.*/
-
-    CLEAR_RAM_SPI_EN;
-#ifdef RAM_SIZE_512K
-    u8SPI_MEM_TX_Buffer[0] = RAM_WRITE_COMMAND;
-    u8SPI_MEM_TX_Buffer[1] = u32RAMWriteAddress>>8;
-    u8SPI_MEM_TX_Buffer[2] = u32RAMWriteAddress;
-#else
-    u8SPI_MEM_TX_Buffer[0] = RAM_WRITE_COMMAND;
-    u8SPI_MEM_TX_Buffer[1] = u32RAMWriteAddress>>16;
-    u8SPI_MEM_TX_Buffer[2] = u32RAMWriteAddress>>8;
-    u8SPI_MEM_TX_Buffer[3] = u32RAMWriteAddress;
-#endif
-
-    for(i=FIRST_PACKET_START; i<FIRST_PACKET_END; i++){
-        u8SPI_MEM_TX_Buffer[i] =  *p_u8DataByte>>8;
-        i++;
-        u8SPI_MEM_TX_Buffer[i] = *p_u8DataByte;
-        p_u8DataByte++;
-    }
-
-    p_u8DataByte = &(mem_data->sample_2.u16XPosition);
-    for(i=SECOND_PACKET_START; i<SECOND_PACKET_END; i++){
-        u8SPI_MEM_TX_Buffer[i] =  *p_u8DataByte>>8;
-        i++;
-        u8SPI_MEM_TX_Buffer[i] = *p_u8DataByte;
-        p_u8DataByte++;
-    }
-    PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL);
-    PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL);
-
-    if(!PLIB_DMA_ChannelXBusyIsBusy(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL)){
-     //   SPI_MEM_DMA_TX_START;
-        SPI_MEM_DMA_RX_START;
-    }
-    
-    //Trigger the DMA
-    if(!PLIB_DMA_ChannelXBusyIsBusy(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL)){
-        SPI_MEM_DMA_TX_START;
-     // SPI_MEM_DMA_RX_START;
-    }
-
-    u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;//Advance the write address
-
-    if(u8OverdubFlag == FALSE){
-        u32SequenceEndAddress = u32RAMWriteAddress;
-        u32EndofRAMRecordingAddress = u32SequenceEndAddress;
-    }
-    else{
-        if(u32RAMWriteAddress >= u32SequenceEndAddress){
-            u32RAMWriteAddress = RESET_RAM_ADDRESS;
-        }
-    }
-
-    xSemaphoreTake(xSemaphoreDMA_0_RX, portMAX_DELAY);
-
-    SET_RAM_SPI_EN;
-}
 
 void read_DMA(memory_data_packet * mem_data){
     if(u8SequenceLocationFlag == STORED_IN_RAM){
@@ -1184,15 +1117,13 @@ void readRAM_DMA(memory_data_packet * mem_data){
                     if(u32RAMReadAddress >= u32SequenceEndAddress){
                         u8PlaybackDirection = REVERSE_PLAYBACK;
                         setPlaybackDirection(u8PlaybackDirection);
-                        u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
                     }
                 }
                 else{
                     u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
-                    if(u32RAMReadAddress == RESET_RAM_ADDRESS){
+                    if(u32RAMReadAddress == RESET_RAM_ADDRESS || u32RAMReadAddress > u32SequenceEndAddress){
                         u8PlaybackDirection = FORWARD_PLAYBACK;
                         setPlaybackDirection(u8PlaybackDirection);
-                        u32RAMReadAddress += NUMBER_OF_DATA_BYTES;
                     }
                 }
                 break;
@@ -1231,6 +1162,145 @@ void readRAM_DMA(memory_data_packet * mem_data){
         u32SequencePlaybackPosition += 12;
     }
 
+}
+
+/*Write data to RAM using the DMA.*/
+void writeRAM_DMA(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
+    int i;
+    uint16_t * p_u16DataByte = &(mem_data->sample_1.u16XPosition);
+    uint8_t u8PlaybackDirection = getPlaybackDirection();
+    uint8_t u8PlaybackMode = getPlaybackMode();
+
+
+    //Set up the DMA to read the file table section.
+    setDMAState(DMA_RAM);
+
+    /*Write the RAM. 32 bit operation appears broken!!!!!Have to do 8 bit.*/
+    /*Set up to write. This procedure writes two samples worth of data.*/
+
+    CLEAR_RAM_SPI_EN;
+#ifdef RAM_SIZE_512K
+    u8SPI_MEM_TX_Buffer[0] = RAM_WRITE_COMMAND;
+    u8SPI_MEM_TX_Buffer[1] = u32RAMWriteAddress>>8;
+    u8SPI_MEM_TX_Buffer[2] = u32RAMWriteAddress;
+#else
+    u8SPI_MEM_TX_Buffer[0] = RAM_WRITE_COMMAND;
+    u8SPI_MEM_TX_Buffer[1] = u32RAMWriteAddress>>16;
+    u8SPI_MEM_TX_Buffer[2] = u32RAMWriteAddress>>8;
+    u8SPI_MEM_TX_Buffer[3] = u32RAMWriteAddress;
+#endif
+
+    if(u8PlaybackDirection == FORWARD_PLAYBACK){
+
+        p_u16DataByte = &(mem_data->sample_1.u16XPosition);
+    }
+    else{
+        p_u16DataByte = &(mem_data->sample_2.u16XPosition);
+    }
+
+    for(i=FIRST_PACKET_START; i<FIRST_PACKET_END; i++){
+        u8SPI_MEM_TX_Buffer[i] =  *p_u16DataByte>>8;
+        i++;
+        u8SPI_MEM_TX_Buffer[i] = *p_u16DataByte;
+        p_u16DataByte++;
+    }
+
+    if(u8PlaybackDirection == FORWARD_PLAYBACK){
+
+        p_u16DataByte = &(mem_data->sample_2.u16XPosition);
+    }
+    else{
+        p_u16DataByte = &(mem_data->sample_1.u16XPosition);
+    }
+
+    for(i=SECOND_PACKET_START; i<SECOND_PACKET_END; i++){
+        u8SPI_MEM_TX_Buffer[i] =  *p_u16DataByte>>8;
+        i++;
+        u8SPI_MEM_TX_Buffer[i] = *p_u16DataByte;
+        p_u16DataByte++;
+    }
+    PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL);
+    PLIB_DMA_ChannelXEnable(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL);
+
+    if(!PLIB_DMA_ChannelXBusyIsBusy(DMA_ID_0, SPI_MEM_RX_DMA_CHANNEL)){
+        SPI_MEM_DMA_RX_START;
+    }
+
+    //Trigger the DMA
+    if(!PLIB_DMA_ChannelXBusyIsBusy(DMA_ID_0, SPI_MEM_TX_DMA_CHANNEL)){
+        SPI_MEM_DMA_TX_START;
+    }
+
+    if(u8OverdubFlag == FALSE){
+        u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;//Advance the write address
+        u32SequenceEndAddress = u32RAMWriteAddress;
+        u32EndofRAMRecordingAddress = u32SequenceEndAddress;
+    }else{
+     //Overdubbing, have to deal with the different playback modes
+        switch(u8PlaybackMode){
+            case LOOPING:
+            case FLIP:
+                if(u8PlaybackDirection == FORWARD_PLAYBACK){
+                    u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;
+                    if(u32RAMWriteAddress >= u32SequenceEndAddress){
+                        u32RAMWriteAddress = RESET_RAM_ADDRESS;
+                    }
+                }
+                else{
+                    u32RAMWriteAddress -= NUMBER_OF_DATA_BYTES;
+                    if(u32RAMWriteAddress == RESET_RAM_ADDRESS){
+                        u32RAMWriteAddress = u32SequenceEndAddress;
+                    }
+                }
+                break;
+            case PENDULUM:
+                if(u8PlaybackDirection == FORWARD_PLAYBACK){
+                    u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;
+                    if(u32RAMWriteAddress >= u32SequenceEndAddress){
+                        u8PlaybackDirection = REVERSE_PLAYBACK;
+                        setPlaybackDirection(u8PlaybackDirection);
+                    }
+                }
+                else{
+                    u32RAMWriteAddress -= NUMBER_OF_DATA_BYTES;
+                    if(u32RAMWriteAddress == RESET_RAM_ADDRESS){
+                        u8PlaybackDirection = FORWARD_PLAYBACK;
+                        setPlaybackDirection(u8PlaybackDirection);
+                    }
+                }
+                break;
+            case ONESHOT:
+            case RETRIGGER:
+                if(u8PlaybackDirection == FORWARD_PLAYBACK){
+                    u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;
+                    //Stop playback at the end.
+                    if(u32RAMWriteAddress >= u32SequenceEndAddress){
+                        u32RAMWriteAddress = RESET_RAM_ADDRESS;
+                        setPlaybackRunStatus(FALSE);
+                    }
+                }
+                else{
+                    u32RAMWriteAddress -= NUMBER_OF_DATA_BYTES;
+                    //Stop playback at the end.
+                    if(u32RAMWriteAddress == RESET_RAM_ADDRESS){
+                        u32RAMWriteAddress = u32SequenceEndAddress;
+                        setPlaybackRunStatus(FALSE);
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+
+    }
+
+    xSemaphoreTake(xSemaphoreDMA_0_RX, portMAX_DELAY);
+
+    SET_RAM_SPI_EN;
+}
+
+uint32_t getEndOfSequenceAddress(void){
+    return u32SequenceEndAddress;
 }
 
 void readFlash_DMA(memory_data_packet * mem_data){
@@ -1625,6 +1695,7 @@ void setNewReadAddress(uint32_t u32NewReadAddress){
                  to account for the bytes.*/
                 u32NewFlashReadAddress += FLASH_SECTOR_SIZE;
             }
+            u8CurrentSector++;
         }
 
         u32FlashReadAddress = u32NewFlashReadAddress;

@@ -10,9 +10,6 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Verify reverse playback works as advertised.
-//TODO Test everything with overdub. Playback triggers, recording triggers
-//TODO Test clock during overdub
 //TODO Test scrub and trim with clocks and with flash
 //TODO Include Bootloader
 
@@ -282,13 +279,15 @@ void MasterControlStateMachine(void){
                if(event_message.u16message == 1){
                    u16ModulationOnFlag = FALSE;
                    if(p_VectrData->u8ModulationMode == SCRUB){
-                       setClockEnableFlag(TRUE);
+                       if(u8PlaybackRunFlag == TRUE){
+                            START_CLOCK_TIMER;
+                       }
                    }
                }
                else{
                    u16ModulationOnFlag = TRUE;
                    if(p_VectrData->u8ModulationMode == SCRUB){
-                       setClockEnableFlag(FALSE);
+                       STOP_CLOCK_TIMER;
                    }
                }
            default:
@@ -737,8 +736,15 @@ void MasterControlStateMachine(void){
                 if(u8BufferDataCount == 0){
                     xQueueReceive(xRAMReadQueue, &memBuffer, 0);
 
-                    if(getRAMReadAddress() == 12){
-                        setResetFlag();
+                    if(p_VectrData->u8PlaybackMode != PENDULUM){
+                        if(getRAMReadAddress() == 0){
+                            setResetFlag();
+                        }
+                    }
+                    else{
+                        if(getRAMReadAddress() == 0 || getRAMReadAddress() == getEndOfSequenceAddress()){
+                            setResetFlag();
+                        }
                     }
 
                     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
@@ -1097,12 +1103,25 @@ void runPlaybackMode(void){
                 xQueueReceive(xRAMReadQueue, &memBuffer, 0);
 
                 if(getStoredSequenceLocationFlag() == STORED_IN_RAM){
-                    if(getRAMReadAddress() == 0){
-                        setResetFlag();
+                    if(p_VectrData->u8PlaybackMode != PENDULUM){
+                        if(getRAMReadAddress() == 0){
+                            setResetFlag();
+                        }
+                    }
+                    else{
+                        if(getRAMReadAddress() == 0 || getRAMReadAddress() == getEndOfSequenceAddress()){
+                            setResetFlag();
+                        }
                     }
                 }else{
-                    if(getFlashReadAddress() == getMemoryStartAddress()){
-                        setResetFlag();
+                    if(p_VectrData->u8PlaybackMode != PENDULUM){
+                        if(getFlashReadAddress() == getMemoryStartAddress()){
+                            setResetFlag();
+                        }
+                    }else{
+                        if(getRAMReadAddress() == getMemoryStartAddress() || getRAMReadAddress() == getEndOfSequenceAddress()){
+                            setResetFlag();
+                        }
                     }
                 }
 
@@ -1609,6 +1628,14 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
     uint16_t u16Modulus;
     int i;
 
+    if(u8PlaybackRunFlag ==  TRUE){
+        if(p_VectrData->u8ModulationMode != SCRUB){
+            START_CLOCK_TIMER;
+        }else{
+            STOP_CLOCK_TIMER;
+        }
+    }
+
     /*Get the ADC data and make some change based on it.*/
     if(xQueueReceive(xADCQueue, &u16ADCData, 0)){
         
@@ -1641,23 +1668,25 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
 
                     u32SequenceLength = getActiveSequenceLength();
 
-                    /*The new sequence position is the determined by the ADC reading.*/
-                    u32NewReadAddress = u32SequenceLength*u16ADCData;
-                    u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
+                    if(u16ADCData != 0){
+                        /*The new sequence position is the determined by the ADC reading.*/
+                        u32NewReadAddress = u32SequenceLength*u16ADCData;
+                        u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
 
-                    /*Check if it's time for a clock pulse.*/
-                    if(u32NewReadAddress != 0){
-                        u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
-                        u16Modulus = u32NewReadAddress%u16Divisor;
+                        /*Check if it's time for a clock pulse.*/
+                        if(u32NewReadAddress != 0){
+                            u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
+                            u16Modulus = u32NewReadAddress%u16Divisor;
 
-                        if(u16Modulus <= 3){
-                            SET_LOOP_SYNC_OUT;
-                        }
-                        else{
-                            CLEAR_LOOP_SYNC_OUT;
+                            if(u16Modulus <= 3){
+                                SET_LOOP_SYNC_OUT;
+                            }
+                            else{
+                                CLEAR_LOOP_SYNC_OUT;
+                            }
                         }
                     }else{
-                        SET_LOOP_SYNC_OUT;
+                        u32NewReadAddress = 0;
                     }
 
                     /*Set the new read position.*/
@@ -2005,7 +2034,7 @@ void startNewRecording(void){
     resetSpeed();
     u8OperatingMode = RECORDING;
     u8RecordRunFlag = TRUE;
-    u8PlaybackRunFlag = FALSE;
+    setPlaybackRunStatus(FALSE);
     resetRAMWriteAddress();
     memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
     memBuffer.sample_1.u16YPosition = pos_and_gesture_struct.u16YPosition;
@@ -2086,7 +2115,7 @@ void armOverdub(void){
     else{
         u8OverdubArmedFlag = NOT_ARMED;
         //Handle the switch LED to indicate whether playback is running.
-        if(Flags.u8OverdubActiveFlag == TRUE){
+        if(u8OverdubRunFlag == TRUE){
            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         }
         else{
@@ -2343,7 +2372,6 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://OVERDUBBING
                 //Encoder switch press during overdub can start and stop playback
-
                 u8OverdubRunFlag ^= TRUE;
 
                 if(u8OverdubRunFlag == TRUE){
@@ -2888,6 +2916,8 @@ void setPlaybackRunStatus(uint8_t u8NewState){
         STOP_CLOCK_TIMER;
         setSwitchLEDState(SWITCH_LED_OFF);
     }
+
+    u8OverdubRunFlag = u8PlaybackRunFlag;
 }
 
 uint8_t getCurrentControl(uint8_t u8Index){
