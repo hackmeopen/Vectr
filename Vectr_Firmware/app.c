@@ -622,6 +622,7 @@ void vPinChangeInterruptHandler(void){
         portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_D);
         CLEAR_PORT_D_CHANGE_INTERRUPT;
         xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
+        DISABLE_PORT_D_CHANGE_INTERRUPT;
     }
 
     //Switch to higher priority task if necessary. This line must be last.

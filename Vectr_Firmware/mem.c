@@ -1740,6 +1740,7 @@ void setNewSequenceEndAddress(uint32_t u32NewSequenceEndAddress){
                  to account for the bytes.*/
                 u32CalculatedFlashSequenceEndAddress += FLASH_SECTOR_SIZE;
             }
+            u8CurrentSector++;
         }
 
         u32SequenceEndAddress = u32CalculatedFlashSequenceEndAddress;

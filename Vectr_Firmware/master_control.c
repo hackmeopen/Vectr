@@ -251,6 +251,8 @@ void MasterControlStateMachine(void){
 
     switchStateMachine();//Handle switch presses to change state
 
+    ENABLE_PORT_D_CHANGE_INTERRUPT;
+
     /*Events on the inputs, Record In, Playback In, Hold In, and Sync In get delivered
       on this queue. They should set flags so the appropriate action can be taken in each
      of the different states.*/
@@ -282,6 +284,9 @@ void MasterControlStateMachine(void){
                        if(u8PlaybackRunFlag == TRUE){
                             START_CLOCK_TIMER;
                        }
+                   }
+                   else if(p_VectrData->u8ModulationMode == TRIM){
+                       setNewSequenceEndAddress(getActiveSequenceLength());
                    }
                }
                else{
@@ -318,14 +323,7 @@ void MasterControlStateMachine(void){
                             }
                             break;
                         case OVERDUB_MODE:
-                            //Go to overdub mode if a sequence has been recorded.
-                            if(u8SequenceRecordedFlag == TRUE){
-                                enterOverdubMode();
-                            }
-                            else{
-                                //indicate error.
-                                LEDIndicateError();
-                            }
+                            enterOverdubMode();
                             break;
                         case MUTE_MODE:
                             //Go to Mute Mode
@@ -587,14 +585,9 @@ void MasterControlStateMachine(void){
                             }
                             break;
                         case OVERDUB_MODE:
-                            u8OperatingMode =  OVERDUBBING;
-                            setLEDAlternateFuncFlag(TRUE);
-                            turnOffAllLEDs();
-                            setIndicateOverdubModeFlag(TRUE);
-                            Flags.u8OverdubActiveFlag = FALSE;
-                            u8OverdubRunFlag = u8PlaybackRunFlag;
+                            enterOverdubMode();
                             break;
-                            case MUTE_MODE:
+                        case MUTE_MODE:
                             //Go to Mute Mode
                             enterMuteMode();
                             break;
@@ -1378,12 +1371,18 @@ void clearNextClockPulseIndex(void){
 }
 
 void enterOverdubMode(void){
-    u8OperatingMode =  OVERDUBBING;
-    setLEDAlternateFuncFlag(TRUE);
-    turnOffAllLEDs();
-    setIndicateOverdubModeFlag(TRUE);
-    Flags.u8OverdubActiveFlag = FALSE;
-    u8OverdubRunFlag = u8PlaybackRunFlag;
+    if(u8SequenceRecordedFlag == TRUE && getStoredSequenceLocationFlag() == STORED_IN_RAM){
+        u8OperatingMode =  OVERDUBBING;
+        setLEDAlternateFuncFlag(TRUE);
+        turnOffAllLEDs();
+        setIndicateOverdubModeFlag(TRUE);
+        Flags.u8OverdubActiveFlag = FALSE;
+        u8OverdubRunFlag = u8PlaybackRunFlag;
+    }
+    else{
+        //indicate error.
+        LEDIndicateError();
+    }
 }
 
 void enterAirScratchMode(void){
@@ -1628,12 +1627,8 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
     uint16_t u16Modulus;
     int i;
 
-    if(u8PlaybackRunFlag ==  TRUE){
-        if(p_VectrData->u8ModulationMode != SCRUB){
-            START_CLOCK_TIMER;
-        }else{
-            STOP_CLOCK_TIMER;
-        }
+    if(!MODULATION_JACK_PLUGGED_IN){
+        u16ModulationOnFlag = FALSE;
     }
 
     /*Get the ADC data and make some change based on it.*/
@@ -1666,27 +1661,30 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
                      * If the ADC value went up, then the playback is going forwards.
                      */
 
+                    STOP_CLOCK_TIMER;
+
                     u32SequenceLength = getActiveSequenceLength();
 
-                    if(u16ADCData != 0){
-                        /*The new sequence position is the determined by the ADC reading.*/
-                        u32NewReadAddress = u32SequenceLength*u16ADCData;
-                        u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
 
-                        /*Check if it's time for a clock pulse.*/
-                        if(u32NewReadAddress != 0){
-                            u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
-                            u16Modulus = u32NewReadAddress%u16Divisor;
+                    /*The new sequence position is the determined by the ADC reading.*/
+                    u32NewReadAddress = u32SequenceLength*u16ADCData;
+                    u32NewReadAddress >>= 12;//ADC has 4096 levels, 12 bits.
 
-                            if(u16Modulus <= 3){
-                                SET_LOOP_SYNC_OUT;
-                            }
-                            else{
-                                CLEAR_LOOP_SYNC_OUT;
-                            }
-                        }
+                    /*Check if it's time for a clock pulse.*/
+                       
+                    u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
+
+                    if(u16Divisor != 0){
+                        u16Modulus = u32NewReadAddress%u16Divisor;
                     }else{
-                        u32NewReadAddress = 0;
+                        u16Modulus = 0;
+                    }
+
+                    if(u16Modulus <= 3){
+                        SET_LOOP_SYNC_OUT;
+                    }
+                    else{
+                        CLEAR_LOOP_SYNC_OUT;
                     }
 
                     /*Set the new read position.*/
