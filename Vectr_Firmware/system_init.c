@@ -75,14 +75,14 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 #pragma config FPLLIDIV = DIV_2         // PLL Input Divider (2x Divider)
 #pragma config FPLLMUL = MUL_24         // PLL Multiplier (20x Multiplier)
 #pragma config UPLLIDIV = DIV_2         // USB PLL Input Divider (2x Divider)
-#pragma config UPLLEN = OFF              // USB PLL Enable (Enabled)
+#pragma config UPLLEN = ON              // USB PLL Enable (Enabled)
 #pragma config FPLLODIV = DIV_1         // System PLL Output Clock Divider (PLL Divide by 1)
 
 // DEVCFG1
 #pragma config FNOSC = PRIPLL           // Oscillator Selection Bits (Primary Osc w/PLL (XT+,HS+,EC+PLL))
 #pragma config FSOSCEN = OFF            // Secondary Oscillator Enable (Disabled)
 #pragma config IESO = ON                // Internal/External Switch Over (Enabled)
-#pragma config POSCMOD = HS             // Primary Oscillator Configuration (HS osc mode)
+#pragma config POSCMOD = XT             // Primary Oscillator Configuration (HS osc mode)
 #pragma config OSCIOFNC = OFF           // CLKO Output Signal Active on the OSCO Pin (Disabled)
 #pragma config FPBDIV = DIV_2           // Peripheral Clock Divisor (Pb_Clk is Sys_Clk/1)
 #pragma config FCKSM = CSDCMD           // Clock Switching and Monitor Selection (Clock Switch Enable, FSCM Enabled)
