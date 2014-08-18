@@ -3,12 +3,12 @@ Vectr
 
 Vectr 3D Sensing Controller
 
-Vectr is an open source 3D sensing controller and sequencer. The board files and firmware are here. Vectr is released under 
-the Modified BSD License. Vectr uses a number of libraries from Microchip which, although they are free to use,
- are not fully open source. 
+Vectr is an open source 3D sensing controller and sequencer. The board files and firmware are here. Vectr software and hardware are released under 
+the Modified BSD License. Vectr uses a number of libraries from Microchip which, although they are free to use,are not fully open source. 
 The BSD license allows me to release my contributions as free to use while retaining Microchip's copyrights. This arrangement
 was worked out in discussions with the legal department of Microchip.
 
+You are free to use Vectr's firmware and hardware for your own purposes.
 
 Vectr uses Microchip Technology's MGC3130 to sense a user's hand in free space above it's surface. It is able to determine the position of the user's hand within a  cubic volume which is 4inx4inx6in. 
 
