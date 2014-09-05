@@ -81,9 +81,11 @@ enum{
     JACK_DETECT_IN_EVENT
 };
 
+#define GATE_WENT_HIGH  2
+
 enum{
-    TRIGGER_WENT_LOW = 0,
-    TRIGGER_WENT_HIGH,
+    TRIGGER_WENT_HIGH = 0,
+    TRIGGER_WENT_LOW,
     NO_TRIGGER
 };
 
