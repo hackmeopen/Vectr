@@ -1232,9 +1232,14 @@ void writeRAM_DMA(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
     }
 
     if(u8OverdubFlag == FALSE){
-        u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;//Advance the write address
-        u32SequenceEndAddress = u32RAMWriteAddress;
-        u32EndofRAMRecordingAddress = u32SequenceEndAddress;
+        if(u32RAMWriteAddress != HIGHEST_RAM_ADDRESS){
+            u32RAMWriteAddress += NUMBER_OF_DATA_BYTES;//Advance the write address
+            u32SequenceEndAddress = u32RAMWriteAddress;
+            u32EndofRAMRecordingAddress = u32SequenceEndAddress;
+        }
+        else{
+            finishRecording();
+        }
     }else{
      //Overdubbing, have to deal with the different playback modes
         switch(u8PlaybackMode){
