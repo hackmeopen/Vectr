@@ -182,6 +182,7 @@ void dacStateMachine(void){
 void dacDMA(void){
     pos_and_gesture_data pos_and_gesture_struct;
     uint16_t u16ADCData;
+    static uint8_t u8blah = 0;
     
     xQueueReceive(xSPIDACQueue, &pos_and_gesture_struct, portMAX_DELAY);
 

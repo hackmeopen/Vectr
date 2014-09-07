@@ -64,7 +64,7 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 /*I2C Definitions*/
 /*MGC3130 I2C Definitions*/
 #define I2C_MGC3130                 I2C_ID_1
-#define I2C_MGC3130_BAUD_RATE       400000
+#define I2C_MGC3130_BAUD_RATE       50000
 #define I2C_MGC3130_SLAVE_ADDRESS   0x1A
 
 /*MGC3130 Port Definitions*/
@@ -102,7 +102,7 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 
 /*SPI Frequency*/
 #define SPI_DAC             SPI_ID_1
-#define SPI_DAC_BAUD_RATE   1600000 //1.6MHz - Max for the ADC.
+#define SPI_DAC_BAUD_RATE   1000000 //1.6MHz - Max for the ADC.
 
 /*SPI Port Definitions*/
 #define DAC_SPI_EN_PORT PORT_CHANNEL_E

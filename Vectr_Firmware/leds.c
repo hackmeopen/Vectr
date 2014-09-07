@@ -180,7 +180,6 @@ void ledStateMachine(void){
             u8AlternateFuncFlag == FALSE && u8IndicateErrorFlag == FALSE){
                 convert_position_to_leds(&pos_and_gesture_struct);
             }
-
             u8LEDState = BLUE_GROUP1;
             break;
     }
@@ -214,7 +213,7 @@ void ledStateMachine(void){
     }
 
 
-    vTaskDelay(36);
+    vTaskDelay(39);
 }
 
 void runIndicateOverdubMode(void){

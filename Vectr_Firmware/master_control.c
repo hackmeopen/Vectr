@@ -10,8 +10,6 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO Test scrub and trim with clocks and with flash
-//TODO Include Bootloader
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -399,6 +397,8 @@ void MasterControlStateMachine(void){
 
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
+
+         
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);

@@ -87,7 +87,7 @@ typedef struct{
 #define TASK_SWITCH_PRIORITY            4
 #define TASK_I2C_MGC3130_PRIORITY       4
 #define TASK_SPI_DAC_PRIORITY           3
-#define TASK_LEDS_PRIORITY              4
+#define TASK_LEDS_PRIORITY              3
 #define TASK_SPI_MEM_PRIORITY           3
 #define TASK_IO_HANDLER_PRIORITY        3
 
