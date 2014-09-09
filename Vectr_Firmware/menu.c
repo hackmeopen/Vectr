@@ -370,6 +370,7 @@ void encoderLiveInteraction(void){
     if(i16EncoderState >= i16EncoderLiveZeroPosition+LIVE_PLAY_ACTIVATION_CLICKS){
         setLivePlayActivationFlag();
         i16EncoderLiveZeroPosition = i16EncoderState;
+        setClockEnableFlag(FALSE);
     }
     else if(i16EncoderState <= i16EncoderLiveZeroPosition-HOLD_ACTIVATION_CLICKS){
         

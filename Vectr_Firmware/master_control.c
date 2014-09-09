@@ -1128,19 +1128,19 @@ void runPlaybackMode(void){
                 u8BufferDataCount = 0;
             }
 
+            //Playback is running. Run the clock
+            setClockEnableFlag(TRUE);
+            slewPosition(p_mem_pos_and_gesture_struct);
        }
        else{
         /*If hold is active, execute the hold behavior*/
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
+            setClockEnableFlag(FALSE);
        }
 
        if(u16ModulationOnFlag == TRUE){
             runModulation(p_mem_pos_and_gesture_struct);
         }
-
-       slewPosition(p_mem_pos_and_gesture_struct);
-
-        
 
         xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
         mutePosition(p_mem_pos_and_gesture_struct);
@@ -1903,7 +1903,7 @@ pos_and_gesture_data * p_hold_data_struct){
        p_u16HoldPosition = p_u16Position;
     }
 
-    if(p_u16MemoryPosition != NULL){
+    if(p_memory_data_struct != NULL){
         p_u16MemoryPosition = &p_memory_data_struct->u16XPosition;
     }
     else{
@@ -2723,6 +2723,7 @@ void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     p_VectrData->u16CurrentXPosition = u16NewXPosition;
     p_VectrData->u16CurrentYPosition = u16NewYPosition;
     p_VectrData->u16CurrentZPosition = u16NewZPosition;
+
     p_pos_and_gesture_struct->u16XPosition = u16NewXPosition;
     p_pos_and_gesture_struct->u16YPosition = u16NewYPosition;
     p_pos_and_gesture_struct->u16ZPosition = u16NewZPosition;
