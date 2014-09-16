@@ -202,11 +202,11 @@ enum{
 
 
 #define MIN_SLEW_RATE   0
-#define MID_SLEW_RATE   512
-#define MAX_SLEW_RATE   1024
-#define SLEW_RATE_LED_INCREMENT 256
-#define SLEW_RATE_INCREMENT 8
-#define SLEW_RATE_LED_SCALING   2
+#define MID_SLEW_RATE   1024
+#define MAX_SLEW_RATE   2048
+#define SLEW_RATE_LED_INCREMENT 512
+#define SLEW_RATE_INCREMENT 16
+#define SLEW_RATE_LED_SCALING   1 
 
 #define LINEARITY_MIN       0   //Pure log
 #define LINEARITY_STRAIGHT  64  //Linear

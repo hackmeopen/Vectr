@@ -139,6 +139,7 @@ uint32_t calculateRampOutput(void);
 void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct);
 void calculateClockTimer(uint32_t u32PlaybackSpeed);
 void enterAirScratchMode(void);
+uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
 
 void MasterControlInit(void){
 
@@ -321,7 +322,7 @@ void MasterControlStateMachine(void){
                             }
                             break;
                         case OVERDUB_MODE:
-                            enterOverdubMode();
+                            //No overdub mode from live play. Too easy to accidentally trigger.
                             break;
                         case MUTE_MODE:
                             //Go to Mute Mode
@@ -397,8 +398,6 @@ void MasterControlStateMachine(void){
 
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
-
-         
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
@@ -525,7 +524,7 @@ void MasterControlStateMachine(void){
                     finishRecording();
                     /*Clear the trigger and go to playback.*/
                     u8PlayTrigger = NO_TRIGGER;
-                    u8PlaybackArmedFlag = NOT_ARMED;
+                   // u8PlaybackArmedFlag = NOT_ARMED;
                     u8OperatingMode = PLAYBACK;
                     setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                     u8PlaybackRunFlag = RUN;
@@ -637,9 +636,11 @@ void MasterControlStateMachine(void){
                 }
             }
             
-            /*If we're in gate mode, then a low level stops recording. A high level starts recording.
+            /*If we're in gate mode, then a low level stops playback. A high level starts recording.
              */
-            if(p_VectrData->u8Control[PLAY] == GATE && p_VectrData->u8Source[PLAY] == EXTERNAL){
+            //Change to if trigger IS LOW!!!!!!!
+            if(p_VectrData->u8Control[PLAY] == GATE && p_VectrData->u8Source[PLAY] == EXTERNAL
+               && u8PlaybackArmedFlag == ARMED ){
                 if(u8PlaybackRunFlag == RUN && u8PlayTrigger == TRIGGER_WENT_LOW){
                     u8PlaybackRunFlag = STOP;
                 }
@@ -660,7 +661,7 @@ void MasterControlStateMachine(void){
                    p_VectrData->u8PlaybackMode != RETRIGGER && p_VectrData->u8PlaybackMode != ONESHOT){
                     if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
                             && (u8PlayTrigger == TRIGGER_WENT_HIGH)){
-                        u8PlaybackArmedFlag = NOT_ARMED;
+                       // u8PlaybackArmedFlag = NOT_ARMED;
                         /*Clear the trigger and start playback.*/
                         u8PlayTrigger = NO_TRIGGER;
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -694,9 +695,10 @@ void MasterControlStateMachine(void){
                 }
             }
             else if(u8PlaybackArmedFlag == DISARMED){
-                if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
-                        && (u8PlayTrigger == TRIGGER_WENT_LOW)){
-                    u8PlaybackArmedFlag = NOT_ARMED;
+//                if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
+//                        && (u8PlayTrigger == TRIGGER_WENT_LOW)){
+                  if(u8PlayTrigger == TRIGGER_WENT_LOW){
+                   // u8PlaybackArmedFlag = NOT_ARMED;
                     /*Clear the trigger and start playback.*/
                     u8PlayTrigger = NO_TRIGGER;
                     u8PlaybackRunFlag = STOP;
@@ -950,6 +952,7 @@ void MasterControlStateMachine(void){
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateSequenceModeFlag(FALSE);
                             u8OperatingMode =  u8PreviousOperatingMode;
+                            u8PlaybackRunFlag = RUN;
                             /*Copy the current data structure into the standard local
                              data structure.*/
                             if(getStoredSequenceLocationFlag() != STORED_IN_RAM){
@@ -1558,6 +1561,7 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     static uint16_t u16LastQuantization[NUM_OF_AXES];
     uint8_t u8QuantizationMode;
     uint16_t u16temp;
+    uint32_t u32temp;
     uint8_t u8index;
     uint16_t u16CurrentPosition[NUM_OF_AXES] = {p_pos_and_gesture_struct->u16XPosition,
                                         p_pos_and_gesture_struct->u16YPosition,
@@ -1566,30 +1570,40 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     for(i=0;i<NUMBER_OF_OUTPUTS;i++){
         u8QuantizationMode = p_VectrData->u16Quantization[i];
         u16temp = u16CurrentPosition[i];
-        
+        u32temp = u16CurrentPosition[i];
         switch(u8QuantizationMode){
             case NO_QUANTIZATION://do nothing.
                 break;
             case CHROMATIC:
-                u16CurrentPosition[i] = scaleBinarySearch(u16ChromaticScale, u16temp, LENGTH_OF_CHROMATIC_SCALE);
+                u32temp <<= 4;
+                u32temp /= 4369;
+                if(u32temp & 0x01){
+                    u32temp >>= 1;
+                    u32temp++;
+                }else{
+                    u32temp >>= 1;
+                }
+
+                u16CurrentPosition[i] = u16ChromaticScale[u32temp];
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
                     u8QuantizationGateFlag = TRUE;
                 }
+            
                 break;
             case MAJOR:
-                u16CurrentPosition[i] = scaleBinarySearch(u16MajorScale, u16temp, LENGTH_OF_MAJOR_SCALE);
+                u16CurrentPosition[i] = scaleSearch(u16MajorScale, u16temp, LENGTH_OF_MAJOR_SCALE);
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
                     u8QuantizationGateFlag = TRUE;
                 }
                 break;
             case PENTATONIC:
-                u16CurrentPosition[i] = scaleBinarySearch(u16PentatonicScale, u16temp, LENGTH_OF_PENTATONIC_SCALE);
+                u16CurrentPosition[i] = scaleSearch(u16PentatonicScale, u16temp, LENGTH_OF_PENTATONIC_SCALE);
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
                     u8QuantizationGateFlag = TRUE;
                 }
                 break;
             case OCTAVE:
-                u16CurrentPosition[i] = scaleBinarySearch(u16OctaveScale, u16temp, LENGTH_OF_OCTAVE_SCALE);
+                u16CurrentPosition[i] = scaleSearch(u16OctaveScale, u16temp, LENGTH_OF_OCTAVE_SCALE);
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
                     u8QuantizationGateFlag = TRUE;
                 }
@@ -1771,6 +1785,30 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
             u16LastADCData = u16ADCData;
         }
 
+}
+
+uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length){
+   uint8_t u8CurrentIndex = 0;
+   uint8_t u8LastIndex = 0;
+   uint16_t u16temp = u16Position;
+   uint16_t u16Spread;
+   uint16_t u16Difference;
+
+   while(u16temp > p_scale[u8CurrentIndex]){
+       u8LastIndex = u8CurrentIndex;
+       u8CurrentIndex++;
+   }
+
+   u16Spread = p_scale[u8CurrentIndex] - p_scale[u8LastIndex];
+   u16Spread >>= 1;
+   u16Difference = p_scale[u8CurrentIndex] - u16Position;
+
+   if(u16Difference < u16Spread){
+       return p_scale[u8CurrentIndex];
+   }
+   else{
+       return p_scale[u8LastIndex];
+   }
 }
 
 uint16_t scaleBinarySearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length){
@@ -2154,7 +2192,12 @@ void switchStateMachine(void){
                             u8HoldState = OFF;//Turn off hold to start playback.
                         }
                         else{//external control = arm playback
-                            armPlayback();
+                            if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
+                                armPlayback();
+                            }
+                            else{
+                                disarmPlayback();
+                            }
                         }
                     }
                     else{
@@ -2207,7 +2250,12 @@ void switchStateMachine(void){
                         resetRAMReadAddress();//Recording ends go to the beginning of the sequence
                     }
                     else{//external control = arm playback
-                        armPlayback();
+                        if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
+                            armPlayback();
+                        }
+                        else{
+                            disarmPlayback();
+                        }
                     }
                 }else{
                     //Menu mode encoder switch press navigates the menu.
@@ -2232,11 +2280,11 @@ void switchStateMachine(void){
                     else{
                         /*If recording is running, we disarm.
                          If recording is not running, we arm it.*/
-                        if(u8RecordRunFlag == TRUE){
-                            disarmRecording();
+                        if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
+                            armPlayback();
                         }
                         else{
-                            armRecording();
+                            disarmPlayback();
                         }
                     }
                 }else{
@@ -2319,11 +2367,11 @@ void switchStateMachine(void){
                          If the playback mode is flip, then we only arm playback
                          to cause the direction to flip with the next trigger.*/
                         if(p_VectrData->u8PlaybackMode != FLIP){
-                            if(u8PlaybackRunFlag == RUN){
-                                disarmPlayback();
+                            if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
+                                armPlayback();
                             }
                             else{
-                                armPlayback();
+                                disarmPlayback();
                             }
                         }else{
                             armPlayback();
