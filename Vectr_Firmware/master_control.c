@@ -404,13 +404,25 @@ void MasterControlStateMachine(void){
 
             /*Check for armed playback or recording and the appropriate trigger.*/
             if(u8PlaybackArmedFlag == ARMED){
-                if(u8PlayTrigger == TRIGGER_WENT_HIGH){
-                    /*If we received the playback trigger.*/
-                    u8PlayTrigger = NO_TRIGGER;
-                    if(u8SequenceRecordedFlag == TRUE){
-                        u8PlaybackArmedFlag = NOT_ARMED;
-                        u8OperatingMode = PLAYBACK;
-                        u8PlaybackRunFlag = RUN;
+                if(p_VectrData->u8Control[PLAY] == GATE){
+                    //If the playback input is high, start playback.
+                    //Don't disarm the flag.
+                    if(PLAY_IN_IS_HIGH){
+                        u8PlayTrigger = NO_TRIGGER;
+                        if(u8SequenceRecordedFlag == TRUE){
+                            u8OperatingMode = PLAYBACK;
+                            u8PlaybackRunFlag = RUN;
+                        }
+                    }
+                }else{
+                    if(u8PlayTrigger == TRIGGER_WENT_HIGH){
+                        /*If we received the playback trigger.*/
+                        u8PlayTrigger = NO_TRIGGER;
+                        if(u8SequenceRecordedFlag == TRUE){
+                            u8PlaybackArmedFlag = NOT_ARMED;
+                            u8OperatingMode = PLAYBACK;
+                            u8PlaybackRunFlag = RUN;
+                        }
                     }
                 }
             }
@@ -519,15 +531,29 @@ void MasterControlStateMachine(void){
              *These can only be armed or disarmed if the Source for each is set to external
              */
             if(u8PlaybackArmedFlag == ARMED){
-                /*Look for a rising edge to start playback*/
-                if(u8PlayTrigger == TRIGGER_WENT_HIGH){
-                    finishRecording();
-                    /*Clear the trigger and go to playback.*/
-                    u8PlayTrigger = NO_TRIGGER;
-                   // u8PlaybackArmedFlag = NOT_ARMED;
-                    u8OperatingMode = PLAYBACK;
-                    setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                    u8PlaybackRunFlag = RUN;
+                /*Look for a triggers to start playback*/
+                if(p_VectrData->u8Control[PLAY] == GATE){
+                    //If the playback input is high, start playback.
+                    //Don't disarm the flag.
+                    if(PLAY_IN_IS_HIGH){
+                        finishRecording();
+                        u8PlayTrigger = NO_TRIGGER;
+                        if(u8SequenceRecordedFlag == TRUE){
+                            u8OperatingMode = PLAYBACK;
+                            u8PlaybackRunFlag = RUN;
+                        }
+                    }
+                }else{
+                    if(u8PlayTrigger == TRIGGER_WENT_HIGH){
+                        /*If we received the playback trigger.*/
+                        finishRecording();
+                        u8PlayTrigger = NO_TRIGGER;
+                        if(u8SequenceRecordedFlag == TRUE){
+                            u8PlaybackArmedFlag = NOT_ARMED;
+                            u8OperatingMode = PLAYBACK;
+                            u8PlaybackRunFlag = RUN;
+                        }
+                    }
                 }
             }
             if(u8RecordingArmedFlag == ARMED){
@@ -639,14 +665,20 @@ void MasterControlStateMachine(void){
             /*If we're in gate mode, then a low level stops playback. A high level starts recording.
              */
             //Change to if trigger IS LOW!!!!!!!
-            if(p_VectrData->u8Control[PLAY] == GATE && p_VectrData->u8Source[PLAY] == EXTERNAL
-               && u8PlaybackArmedFlag == ARMED ){
-                if(u8PlaybackRunFlag == RUN && u8PlayTrigger == TRIGGER_WENT_LOW){
-                    u8PlaybackRunFlag = STOP;
-                }
-                else if(u8PlaybackRunFlag == STOP && u8PlayTrigger == TRIGGER_WENT_HIGH){
-                    u8PlaybackRunFlag = RUN;
-                }
+            if(p_VectrData->u8Control[PLAY] == GATE && p_VectrData->u8Source[PLAY] == EXTERNAL){
+               if(u8PlaybackArmedFlag == ARMED ){
+                    if(PLAY_IN_IS_HIGH){
+                        setPlaybackRunStatus(RUN);
+                    }
+                    else{
+                        setPlaybackRunStatus(STOP);
+                    }
+               }
+               else{
+                   if(!PLAY_IN_IS_HIGH){
+                       setPlaybackRunStatus(STOP);
+                   }
+               }
             }
 
              /*Check for armed playback or recording and the appropriate trigger.
@@ -661,7 +693,7 @@ void MasterControlStateMachine(void){
                    p_VectrData->u8PlaybackMode != RETRIGGER && p_VectrData->u8PlaybackMode != ONESHOT){
                     if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
                             && (u8PlayTrigger == TRIGGER_WENT_HIGH)){
-                       // u8PlaybackArmedFlag = NOT_ARMED;
+                        u8PlaybackArmedFlag = NOT_ARMED;
                         /*Clear the trigger and start playback.*/
                         u8PlayTrigger = NO_TRIGGER;
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -695,10 +727,10 @@ void MasterControlStateMachine(void){
                 }
             }
             else if(u8PlaybackArmedFlag == DISARMED){
-//                if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
-//                        && (u8PlayTrigger == TRIGGER_WENT_LOW)){
-                  if(u8PlayTrigger == TRIGGER_WENT_LOW){
-                   // u8PlaybackArmedFlag = NOT_ARMED;
+                if(((p_VectrData->u8Control[PLAY] == TRIGGER) || (p_VectrData->u8Control[PLAY] == TRIGGER_AUTO))
+                     && (u8PlayTrigger == TRIGGER_WENT_LOW)){
+       
+                    u8PlaybackArmedFlag = NOT_ARMED;
                     /*Clear the trigger and start playback.*/
                     u8PlayTrigger = NO_TRIGGER;
                     u8PlaybackRunFlag = STOP;
@@ -855,12 +887,19 @@ void MasterControlStateMachine(void){
                 }
             }
 
+            //External Gate triggered mode.
             if(p_VectrData->u8Control[OVERDUB] == GATE && p_VectrData->u8Source[OVERDUB] == EXTERNAL){
-                if(u8OverdubRunFlag == TRUE && u8RecordTrigger == TRIGGER_WENT_LOW){
-                    Flags.u8OverdubActiveFlag = FALSE;
-                }
-                else if(u8OverdubRunFlag == FALSE && u8RecordTrigger == TRIGGER_WENT_HIGH){
-                    Flags.u8OverdubActiveFlag = TRUE;
+                if(u8OverdubArmedFlag == ARMED){
+                    if(REC_IN_IS_HIGH){
+                        Flags.u8OverdubActiveFlag = FALSE;
+                    }
+                    else{
+                        Flags.u8OverdubActiveFlag = TRUE;
+                    }
+                }else{
+                    if(!REC_IN_IS_HIGH){
+                       Flags.u8OverdubActiveFlag = FALSE;
+                    }
                 }
             }
 
