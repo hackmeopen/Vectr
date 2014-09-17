@@ -307,8 +307,7 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 
 #define RESET_LED_TIMER PLIB_TMR_Counter16BitClear(LED_TIMER_ID);
 
-/*Timer for timing the clock pulses - Its speed is variable along with
- * the speed of the
+/*Timer for timing the clock pulses 
  */
 #define CLOCK_TIMER_ID  TMR_ID_3
 #define CLOCK_TIMER_PRESCALE    TMR_PRESCALE_VALUE_1

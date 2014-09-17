@@ -143,62 +143,13 @@ uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Le
 
 void MasterControlInit(void){
 
-    u8OperatingMode = LIVE_PLAY;
-    VectrData.u8PlaybackMode = LOOPING;
-    VectrData.u8PlaybackDirection = FORWARD_PLAYBACK;
-    VectrData.u8PlaybackMode = LOOPING;
-    VectrData.u8ModulationMode = SPEED;
-    VectrData.u8GateMode = HAND_GATE;
-    VectrData.u8ClockMode = CLOCK_PULSE_1;
-
-    VectrData.u16SlewRate[X_OUTPUT_INDEX] = MID_SLEW_RATE;
-    VectrData.u16SlewRate[Y_OUTPUT_INDEX] = MID_SLEW_RATE;
-    VectrData.u16SlewRate[Z_OUTPUT_INDEX] = MID_SLEW_RATE;
-
-    VectrData.u8Range[X_OUTPUT_INDEX] = RANGE_UNI_5V;
-    VectrData.u8Range[Y_OUTPUT_INDEX] = RANGE_UNI_5V;
-    VectrData.u8Range[Z_OUTPUT_INDEX] = RANGE_UNI_5V;
-
-    VectrData.u8Source[RECORD] = SWITCH;
-    VectrData.u8Source[PLAY] = SWITCH;
-    VectrData.u8Source[OVERDUB] = SWITCH;
-
-    VectrData.u8Control[RECORD] = TRIGGER;
-    VectrData.u8Control[PLAY] = TRIGGER_AUTO;
-    VectrData.u8Control[OVERDUB] = TRIGGER;
-
-    VectrData.u8OverdubStatus[X_OUTPUT_INDEX] = TRUE;
-    VectrData.u8OverdubStatus[Y_OUTPUT_INDEX] = TRUE;
-    VectrData.u8OverdubStatus[Z_OUTPUT_INDEX] = TRUE;
-
-    VectrData.u8HoldBehavior[X_OUTPUT_INDEX] = HOLD;
-    VectrData.u8HoldBehavior[Y_OUTPUT_INDEX] = HOLD;
-    VectrData.u8HoldBehavior[Z_OUTPUT_INDEX] = HOLD;
-
-    VectrData.u16Quantization[X_OUTPUT_INDEX] = NO_QUANTIZATION;
-    VectrData.u16Quantization[Y_OUTPUT_INDEX] = NO_QUANTIZATION;
-    VectrData.u16Quantization[Z_OUTPUT_INDEX] = NO_QUANTIZATION;
-
-    VectrData.u8MuteState[X_OUTPUT_INDEX] = FALSE;
-    VectrData.u8MuteState[Y_OUTPUT_INDEX] = FALSE;
-    VectrData.u8MuteState[Z_OUTPUT_INDEX] = FALSE;
-
-    VectrData.u16CurrentXPosition = 0;
-    VectrData.u16CurrentYPosition = 0;
-    VectrData.u16CurrentZPosition = 0;
-
-    VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-    VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-    VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-
+    defaultSettings();
     Flags.u8OverdubActiveFlag = FALSE;
-
-    u16ModulationOnFlag = FALSE;
-
     u8HoldState = OFF;
-    u8MenuModeFlag = FALSE;
+    u8OperatingMode = LIVE_PLAY;
     u8EncKeyPressFlag = FALSE;
-
+    u8MenuModeFlag = FALSE;
+    u16ModulationOnFlag = FALSE;
     CLEAR_GATE_OUT_PORT;
     CLEAR_LOOP_SYNC_OUT;
 
@@ -1151,6 +1102,45 @@ void MasterControlStateMachine(void){
         default:
             break;
     }
+}
+
+void defaultSettings(void){
+    VectrData.u8PlaybackMode = LOOPING;
+    VectrData.u8PlaybackDirection = FORWARD_PLAYBACK;
+    VectrData.u8PlaybackMode = LOOPING;
+    VectrData.u8ModulationMode = SPEED;
+    VectrData.u8GateMode = HAND_GATE;
+    VectrData.u8ClockMode = CLOCK_PULSE_1;
+    VectrData.u16SlewRate[X_OUTPUT_INDEX] = MID_SLEW_RATE;
+    VectrData.u16SlewRate[Y_OUTPUT_INDEX] = MID_SLEW_RATE;
+    VectrData.u16SlewRate[Z_OUTPUT_INDEX] = MID_SLEW_RATE;
+    VectrData.u8Range[X_OUTPUT_INDEX] = RANGE_UNI_5V;
+    VectrData.u8Range[Y_OUTPUT_INDEX] = RANGE_UNI_5V;
+    VectrData.u8Range[Z_OUTPUT_INDEX] = RANGE_UNI_5V;
+    VectrData.u8Source[RECORD] = SWITCH;
+    VectrData.u8Source[PLAY] = SWITCH;
+    VectrData.u8Source[OVERDUB] = SWITCH;
+    VectrData.u8Control[RECORD] = TRIGGER;
+    VectrData.u8Control[PLAY] = TRIGGER_AUTO;
+    VectrData.u8Control[OVERDUB] = TRIGGER;
+    VectrData.u8OverdubStatus[X_OUTPUT_INDEX] = TRUE;
+    VectrData.u8OverdubStatus[Y_OUTPUT_INDEX] = TRUE;
+    VectrData.u8OverdubStatus[Z_OUTPUT_INDEX] = TRUE;
+    VectrData.u8HoldBehavior[X_OUTPUT_INDEX] = HOLD;
+    VectrData.u8HoldBehavior[Y_OUTPUT_INDEX] = HOLD;
+    VectrData.u8HoldBehavior[Z_OUTPUT_INDEX] = HOLD;
+    VectrData.u16Quantization[X_OUTPUT_INDEX] = NO_QUANTIZATION;
+    VectrData.u16Quantization[Y_OUTPUT_INDEX] = NO_QUANTIZATION;
+    VectrData.u16Quantization[Z_OUTPUT_INDEX] = NO_QUANTIZATION;
+    VectrData.u8MuteState[X_OUTPUT_INDEX] = FALSE;
+    VectrData.u8MuteState[Y_OUTPUT_INDEX] = FALSE;
+    VectrData.u8MuteState[Z_OUTPUT_INDEX] = FALSE;
+    VectrData.u16CurrentXPosition = 0;
+    VectrData.u16CurrentYPosition = 0;
+    VectrData.u16CurrentZPosition = 0;
+    VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
+    VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
+    VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
 }
 
 void runPlaybackMode(void){

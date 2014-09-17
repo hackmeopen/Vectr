@@ -250,6 +250,7 @@ enum{
     AIR_SCRATCH_MODE
 };
 
+#define DEFAULT_SETTINGS_TIME_LENGTH    30000
 
 typedef struct{
     uint8_t u8Range[NUMBER_OF_OUTPUTS];//Keep this as the first entry...things could get messed up.
@@ -326,6 +327,7 @@ void setCurrentGateMode(uint8_t u8NewState);
 void setResetFlag(void);
 uint8_t getResetFlag(void);
 void clearResetFlag(void);
+void defaultSettings(void);
 
 
 #endif	/* MASTER_CONTROL_H */

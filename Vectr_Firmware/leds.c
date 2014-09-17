@@ -28,7 +28,7 @@ static uint8_t u8PowerUpSequenceFlag = TRUE;
 static uint8_t u8IndicateErrorFlag = FALSE;
 static uint8_t u8IndicateMuteModeFlag = FALSE;
 
-#define BLINK_TIMER_RESET   200
+#define BLINK_TIMER_RESET   100
 
 const uint8_t led_ordered_array[NUM_OF_BLUE_LEDS] = {LED1,
  LED2   ,
