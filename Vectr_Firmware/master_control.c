@@ -362,8 +362,7 @@ void MasterControlStateMachine(void){
             else if(u8HandPresentFlag == TRUE &&  u8HandHoldFlag == TRUE){
                 u8HandHoldFlag = FALSE;
                 u8HoldActivationFlag = HOLD_DEACTIVATE;
-            }
-            
+            }         
 
             /*If we've received a hold command, store the current value.*/
             if(u8HoldActivationFlag == HOLD_ACTIVATE){
@@ -409,6 +408,7 @@ void MasterControlStateMachine(void){
                     //Don't disarm the flag.
                     if(PLAY_IN_IS_HIGH){
                         u8PlayTrigger = NO_TRIGGER;
+                        u8HoldState = OFF;
                         if(u8SequenceRecordedFlag == TRUE){
                             u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
@@ -418,6 +418,7 @@ void MasterControlStateMachine(void){
                     if(u8PlayTrigger == TRIGGER_WENT_HIGH){
                         /*If we received the playback trigger.*/
                         u8PlayTrigger = NO_TRIGGER;
+                        u8HoldState = OFF;
                         if(u8SequenceRecordedFlag == TRUE){
                             u8PlaybackArmedFlag = NOT_ARMED;
                             u8OperatingMode = PLAYBACK;
@@ -428,6 +429,7 @@ void MasterControlStateMachine(void){
             }
             if(u8RecordingArmedFlag == ARMED){
                 if(u8RecordTrigger == TRIGGER_WENT_HIGH){/*If we received the record trigger.*/
+                    u8HoldState = OFF;
                     u8RecordTrigger = NO_TRIGGER;
                     u8RecordingArmedFlag = NOT_ARMED;
                     startNewRecording();
@@ -891,14 +893,35 @@ void MasterControlStateMachine(void){
             if(p_VectrData->u8Control[OVERDUB] == GATE && p_VectrData->u8Source[OVERDUB] == EXTERNAL){
                 if(u8OverdubArmedFlag == ARMED){
                     if(REC_IN_IS_HIGH){
-                        Flags.u8OverdubActiveFlag = FALSE;
+                        if(Flags.u8OverdubActiveFlag == FALSE){
+                            setLEDAlternateFuncFlag(FALSE);
+                            setIndicateOverdubModeFlag(FALSE);
+                            turnOffAllLEDs();
+                            setRAMWriteAddress(getRAMReadAddress());//synchronize write with read
+                            setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+                        }
+                        Flags.u8OverdubActiveFlag = TRUE;
                     }
                     else{
-                        Flags.u8OverdubActiveFlag = TRUE;
+                        if(Flags.u8OverdubActiveFlag == TRUE){
+                            setLEDAlternateFuncFlag(TRUE);
+                            turnOffAllLEDs();
+                            setIndicateOverdubModeFlag(TRUE);
+                            indicateActiveAxes(OVERDUB);
+                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                        }
+                        Flags.u8OverdubActiveFlag = FALSE;
                     }
                 }else{
                     if(!REC_IN_IS_HIGH){
-                       Flags.u8OverdubActiveFlag = FALSE;
+                       if(Flags.u8OverdubActiveFlag == TRUE){
+                            setLEDAlternateFuncFlag(TRUE);
+                            turnOffAllLEDs();
+                            setIndicateOverdubModeFlag(TRUE);
+                            indicateActiveAxes(OVERDUB);
+                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                        }
+                        Flags.u8OverdubActiveFlag = FALSE;
                     }
                 }
             }
@@ -2231,7 +2254,7 @@ void switchStateMachine(void){
                             u8HoldState = OFF;//Turn off hold to start playback.
                         }
                         else{//external control = arm playback
-                            if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
+                            if(u8PlaybackArmedFlag != ARMED){
                                 armPlayback();
                             }
                             else{
@@ -2289,7 +2312,7 @@ void switchStateMachine(void){
                         resetRAMReadAddress();//Recording ends go to the beginning of the sequence
                     }
                     else{//external control = arm playback
-                        if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
+                        if(u8PlaybackArmedFlag != ARMED){
                             armPlayback();
                         }
                         else{
@@ -2406,11 +2429,19 @@ void switchStateMachine(void){
                          If the playback mode is flip, then we only arm playback
                          to cause the direction to flip with the next trigger.*/
                         if(p_VectrData->u8PlaybackMode != FLIP){
-                            if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
-                                armPlayback();
-                            }
-                            else{
-                                disarmPlayback();
+                            if(p_VectrData->u8Control[PLAY] != GATE){
+                                if(u8PlaybackRunFlag != RUN){
+                                    armPlayback();
+                                }
+                                else{
+                                    disarmPlayback();
+                                }
+                            }else{
+                                if(u8PlaybackArmedFlag == DISARMED){
+                                   u8PlaybackArmedFlag = ARMED;
+                                }else{
+                                   u8PlaybackArmedFlag = DISARMED;
+                                }
                             }
                         }else{
                             armPlayback();
@@ -2716,19 +2747,19 @@ void indicateActiveAxes(uint8_t u8State){
     switch(u8State){
         case OVERDUB:
             if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX]){
-                setLeftLEDs(HALF_BRIGHTNESS, BLINK);
+                setLeftLEDs(MAX_BRIGHTNESS, ON);
             }
             else{
                 setLeftLEDs(0, OFF);
             }
             if(p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX]){
-                setTopLEDs(HALF_BRIGHTNESS, BLINK);
+                setTopLEDs(MAX_BRIGHTNESS, ON);
             }
             else{
                 setTopLEDs(0, OFF);
             }
             if(p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX]){
-                setRightLEDs(HALF_BRIGHTNESS, BLINK);
+                setRightLEDs(MAX_BRIGHTNESS, ON);
             }
             else{
                 setRightLEDs(0, OFF);
