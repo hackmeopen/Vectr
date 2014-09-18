@@ -125,8 +125,9 @@ void menuHandlerInit(void){
 void MenuStateMachine(void){
     uint8_t u8ExitWithoutSavingFlag = TRUE;
     uint8_t u8MemCommand;
-    static uint16_t u16defaultSettingsInitialValue;
+    static uint32_t u32defaultSettingsInitialValue;
     static uint8_t u8checkForDefaultSettings = FALSE;
+    uint32_t u32TickCount;
 
     //Check to see if the encoder moved
     if(i8MenuChangeFlag != 0 && i8SubMenuState == SUBMENU_NOT_SELECTED){
@@ -138,16 +139,20 @@ void MenuStateMachine(void){
     //the mechanism for defaulting the menu.
     if(u8MenuKeyPressFlag == TRUE){
         //Start the timer.
-        u16defaultSettingsInitialValue = xTaskGetTickCount();
+        u32TickCount = xTaskGetTickCount();
+        u32defaultSettingsInitialValue = u32TickCount;
         u8checkForDefaultSettings = TRUE;
     }else{
         //If the switch continues to be held down for 3 seconds, default the settings and exit the menu.
         if(u8checkForDefaultSettings == TRUE){
             if(!READ_ENC_SWITCH){//Switch is held down.
                 //Increment the timer
-                if((xTaskGetTickCount() - u16defaultSettingsInitialValue) > DEFAULT_SETTINGS_TIME_LENGTH){
+                u32TickCount = xTaskGetTickCount();
+                if((u32TickCount - u32defaultSettingsInitialValue) > DEFAULT_SETTINGS_TIME_LENGTH){
                     defaultSettings();
+                    u8ExitWithoutSavingFlag = FALSE;
                     u8MenuExitFlag = TRUE;
+                    u8checkForDefaultSettings = FALSE;
                 }
             }else{
                 u8checkForDefaultSettings = FALSE;
