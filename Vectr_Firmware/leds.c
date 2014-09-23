@@ -217,23 +217,35 @@ void ledStateMachine(void){
 }
 
 void runIndicateOverdubMode(void){
+    uint8_t u8allOffFlag = TRUE;
+
     if(getOverdubStatus(X_OUTPUT_INDEX) == TRUE){
         setLeftLEDs(MAX_BRIGHTNESS, ON);
+        u8allOffFlag = FALSE;
     }
     else{
         setLeftLEDs(MAX_BRIGHTNESS, OFF);
     }
     if(getOverdubStatus(Y_OUTPUT_INDEX) == TRUE){
         setTopLEDs(MAX_BRIGHTNESS, ON);
+        u8allOffFlag = FALSE;
     }
     else{
         setTopLEDs(MAX_BRIGHTNESS, OFF);
     }
     if(getOverdubStatus(Z_OUTPUT_INDEX) == TRUE){
         setRightLEDs(MAX_BRIGHTNESS, ON);
+        u8allOffFlag = FALSE;
     }
     else{
         setRightLEDs(MAX_BRIGHTNESS, OFF);
+    }
+
+    if(u8allOffFlag == TRUE){
+        setRedLEDs(256);
+    }
+    else{
+        turnOffRedLEDs();
     }
 }
 
@@ -242,25 +254,35 @@ void setIndicateMuteModeFlag(uint8_t u8NewState){
 }
 
 void runIndicateMuteMode(void){
-    static uint8_t u8IndicateMuteModeState;
+    uint8_t u8allOffFlag = TRUE;
 
     if(getMuteStatus(X_OUTPUT_INDEX) == FALSE){
         setLeftLEDs(MAX_BRIGHTNESS, ON);
+        u8allOffFlag = FALSE;
     }
     else{
         setLeftLEDs(MAX_BRIGHTNESS, OFF);
     }
     if(getMuteStatus(Y_OUTPUT_INDEX) == FALSE){
         setTopLEDs(MAX_BRIGHTNESS, ON);
+        u8allOffFlag = FALSE;
     }
     else{
        setTopLEDs(MAX_BRIGHTNESS, OFF);
     }
     if(getMuteStatus(Z_OUTPUT_INDEX) == FALSE){
         setRightLEDs(MAX_BRIGHTNESS, ON);
+        u8allOffFlag = FALSE;
     }
     else{
         setRightLEDs(MAX_BRIGHTNESS, OFF);
+    }
+
+    if(u8allOffFlag == TRUE){
+        setRedLEDs(256);
+    }
+    else{
+        turnOffRedLEDs();
     }
 }
 

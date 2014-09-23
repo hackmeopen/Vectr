@@ -792,6 +792,22 @@ void MasterControlStateMachine(void){
                 }
             }
 
+            if(u8SyncTrigger == TRUE){
+               if(p_VectrData->u8PlaybackMode != FLIP){
+                   setRAMRetriggerFlag();
+
+               }else{
+                   if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
+                       setPlaybackDirection(REVERSE_PLAYBACK);
+                   }
+                   else{
+                       setPlaybackDirection(FORWARD_PLAYBACK);
+                   }
+               }
+
+               u8SyncTrigger = FALSE;
+            }
+
             /* When overdub is entered, the axes can be turned on or off. Touches
              * Touches on the left turn on/off x
              * Touches on the top turn on/off y
@@ -849,27 +865,16 @@ void MasterControlStateMachine(void){
                         }
                         Flags.u8OverdubActiveFlag = TRUE;
                     }
-                    else{
-                        if(Flags.u8OverdubActiveFlag == TRUE){
-                            setLEDAlternateFuncFlag(TRUE);
-                            turnOffAllLEDs();
-                            setRedLEDs(256);
-                            setIndicateOverdubModeFlag(TRUE);
-                            indicateActiveAxes(OVERDUB);
-                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                        }
+                    else{ 
                         Flags.u8OverdubActiveFlag = FALSE;
                     }
-                }else{
+                }else if(u8OverdubArmedFlag == DISARMED){
                     if(!REC_IN_IS_HIGH){
-                       if(Flags.u8OverdubActiveFlag == TRUE){
-                            setLEDAlternateFuncFlag(TRUE);
-                            turnOffAllLEDs();
-                            setRedLEDs(256);
-                            setIndicateOverdubModeFlag(TRUE);
-                            indicateActiveAxes(OVERDUB);
-                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                        }
+                        setLEDAlternateFuncFlag(TRUE);
+                        setIndicateOverdubModeFlag(TRUE);
+                        turnOffAllLEDs();
+                        indicateActiveAxes(OVERDUB);
+                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                         Flags.u8OverdubActiveFlag = FALSE;
                     }
                 }
@@ -899,7 +904,6 @@ void MasterControlStateMachine(void){
                     Flags.u8OverdubActiveFlag = FALSE;
                     setLEDAlternateFuncFlag(TRUE);
                     turnOffAllLEDs();
-                    setRedLEDs(256);
                     setIndicateOverdubModeFlag(TRUE);
                     if(u8PlaybackRunFlag == TRUE){
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -1429,7 +1433,7 @@ void enterOverdubMode(void){
         u8OperatingMode =  OVERDUBBING;
         setLEDAlternateFuncFlag(TRUE);
         turnOffAllLEDs();
-        setRedLEDs(256);
+
         setIndicateOverdubModeFlag(TRUE);
         Flags.u8OverdubActiveFlag = FALSE;
         u8OverdubRunFlag = u8PlaybackRunFlag;
@@ -1453,7 +1457,6 @@ void enterMuteMode(void){
     u8OperatingMode = MUTING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
-    setRedLEDs(256);
     setIndicateMuteModeFlag(TRUE);
 }
 
@@ -2503,7 +2506,6 @@ void switchStateMachine(void){
                     else{
                         setLEDAlternateFuncFlag(TRUE);
                         turnOffAllLEDs();
-                        setRedLEDs(256);
                         setIndicateOverdubModeFlag(TRUE);
                         indicateActiveAxes(OVERDUB);
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -2756,6 +2758,16 @@ void indicateActiveAxes(uint8_t u8State){
             else{
                 setRightLEDs(0, OFF);
             }
+
+            if(!p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] &&
+               !p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] &&
+               !p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX]){
+                setRedLEDs(256);
+            }
+            else{
+                turnOffRedLEDs();
+            }
+
             break;
         default:
             break;
