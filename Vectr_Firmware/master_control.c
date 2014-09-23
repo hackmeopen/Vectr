@@ -23,7 +23,7 @@
 #define BOTTOM_TOUCH    MGC3130_TOUCH_BOTTOM
 #define CENTER_TOUCH    MGC3130_TOUCH_CENTER
 
-#define GESTURE_DEBOUNCE_TIMER_RESET    25
+#define GESTURE_DEBOUNCE_TIMER_RESET    50
 
 
 static VectrDataStruct VectrData;
@@ -803,15 +803,11 @@ void MasterControlStateMachine(void){
                     u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
                     switch(u8GestureFlag){
                         case MENU_MODE:
-                            setLEDAlternateFuncFlag(FALSE);
                             turnOffAllLEDs();
                             Flags.u8OverdubActiveFlag = FALSE;
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateOverdubModeFlag(FALSE);
                             u8OperatingMode =  PLAYBACK;
-                            break;
-                        case OVERDUB_MODE:
-
                             break;
                         default:
                             break;
@@ -857,6 +853,7 @@ void MasterControlStateMachine(void){
                         if(Flags.u8OverdubActiveFlag == TRUE){
                             setLEDAlternateFuncFlag(TRUE);
                             turnOffAllLEDs();
+                            setRedLEDs(256);
                             setIndicateOverdubModeFlag(TRUE);
                             indicateActiveAxes(OVERDUB);
                             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -868,6 +865,7 @@ void MasterControlStateMachine(void){
                        if(Flags.u8OverdubActiveFlag == TRUE){
                             setLEDAlternateFuncFlag(TRUE);
                             turnOffAllLEDs();
+                            setRedLEDs(256);
                             setIndicateOverdubModeFlag(TRUE);
                             indicateActiveAxes(OVERDUB);
                             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -901,6 +899,7 @@ void MasterControlStateMachine(void){
                     Flags.u8OverdubActiveFlag = FALSE;
                     setLEDAlternateFuncFlag(TRUE);
                     turnOffAllLEDs();
+                    setRedLEDs(256);
                     setIndicateOverdubModeFlag(TRUE);
                     if(u8PlaybackRunFlag == TRUE){
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -1430,6 +1429,7 @@ void enterOverdubMode(void){
         u8OperatingMode =  OVERDUBBING;
         setLEDAlternateFuncFlag(TRUE);
         turnOffAllLEDs();
+        setRedLEDs(256);
         setIndicateOverdubModeFlag(TRUE);
         Flags.u8OverdubActiveFlag = FALSE;
         u8OverdubRunFlag = u8PlaybackRunFlag;
@@ -1453,6 +1453,7 @@ void enterMuteMode(void){
     u8OperatingMode = MUTING;
     setLEDAlternateFuncFlag(TRUE);
     turnOffAllLEDs();
+    setRedLEDs(256);
     setIndicateMuteModeFlag(TRUE);
 }
 
@@ -2502,6 +2503,7 @@ void switchStateMachine(void){
                     else{
                         setLEDAlternateFuncFlag(TRUE);
                         turnOffAllLEDs();
+                        setRedLEDs(256);
                         setIndicateOverdubModeFlag(TRUE);
                         indicateActiveAxes(OVERDUB);
                         setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
