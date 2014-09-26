@@ -473,7 +473,6 @@ void MasterControlStateMachine(void){
             if(p_VectrData->u8Control[RECORD] == GATE && p_VectrData->u8Source[RECORD] == EXTERNAL){
                 if(u8RecordRunFlag == TRUE && u8RecordTrigger == TRIGGER_WENT_LOW){
                     u8RecordRunFlag = FALSE;
-                    finishRecording();
                 }
                 else if(u8RecordRunFlag == FALSE && u8RecordTrigger == TRIGGER_WENT_HIGH){
                     u8RecordRunFlag = TRUE;
@@ -528,7 +527,7 @@ void MasterControlStateMachine(void){
                     }
                 }else{
                     /*Gate control*/
-                    if(u8RecordTrigger == TRIGGER_WENT_LOW){
+                    if(!REC_IN_IS_HIGH){
                         u8RecordingArmedFlag = NOT_ARMED;
                         finishRecording();
                     }
@@ -2136,6 +2135,10 @@ void startNewRecording(void){
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
     setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+
+    if(p_VectrData->u8Control[RECORD] == TRIGGER && p_VectrData->u8Source[RECORD] == EXTERNAL){
+        u8RecordingArmedFlag = NOT_ARMED;
+    }
 }
 
 /*End a recording. If automatic play triggering is enabled, go to playback.*/
@@ -2306,6 +2309,8 @@ void switchStateMachine(void){
                         resetRAMReadAddress();//Recording ends go to the beginning of the sequence
                     }
                     else{//external control = arm playback
+
+
                         if(u8PlaybackArmedFlag != ARMED){
                             armPlayback();
                         }
@@ -2336,11 +2341,20 @@ void switchStateMachine(void){
                     else{
                         /*If recording is running, we disarm.
                          If recording is not running, we arm it.*/
-                        if(u8PlaybackArmedFlag == NOT_ARMED || u8PlaybackArmedFlag == DISARMED){
-                            armPlayback();
-                        }
-                        else{
-                            disarmPlayback();
+                        //If the mode is set to gate, then recording will either be armed or disarmed.
+                        if(p_VectrData->u8Control[RECORD] == GATE){
+                            if(u8RecordingArmedFlag == DISARMED){
+                                armRecording();
+                            }else{
+                                disarmRecording();
+                            }  
+                        }else{//Trigger Recording
+                            if(u8RecordRunFlag == FALSE){
+                                armRecording();
+                            }
+                            else{
+                                disarmRecording();
+                            }
                         }
                     }
                 }else{
