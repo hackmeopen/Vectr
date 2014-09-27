@@ -728,9 +728,9 @@ void vTaskIOHandler(void* pvParameters){
                 if((u8PortELastState & (1<<SYNC_IN_PIN)) != (u8PortEState & (1<<SYNC_IN_PIN))){
                     //Direction pin reverses playback direction
                     u8SyncInState = (u8PortEState & (1<<SYNC_IN_PIN))>>SYNC_IN_PIN;
-                    if(u8SyncInState == 1){
+                    if(u8SyncInState == 0){
                         event_message.u16messageType = SYNC_IN_EVENT;
-                        event_message.u16message = u8SyncInState;
+                        event_message.u16message = 1;
                         xQueueSend(xIOEventQueue, &event_message, 0);
                     }
                 }

@@ -473,9 +473,11 @@ void MasterControlStateMachine(void){
             if(p_VectrData->u8Control[RECORD] == GATE && p_VectrData->u8Source[RECORD] == EXTERNAL){
                 if(u8RecordRunFlag == TRUE && u8RecordTrigger == TRIGGER_WENT_LOW){
                     u8RecordRunFlag = FALSE;
+                    setSwitchLEDState(SWITCH_LED_RED);
                 }
                 else if(u8RecordRunFlag == FALSE && u8RecordTrigger == TRIGGER_WENT_HIGH){
                     u8RecordRunFlag = TRUE;
+                    setSwitchLEDState(SWITCH_LED_RED_BLINKING);
                 }
             }
 
@@ -621,14 +623,17 @@ void MasterControlStateMachine(void){
                if(u8PlaybackArmedFlag == ARMED ){
                     if(PLAY_IN_IS_HIGH){
                         setPlaybackRunStatus(RUN);
+                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                     }
                     else{
                         setPlaybackRunStatus(STOP);
+                        setSwitchLEDState(SWITCH_LED_GREEN);
                     }
                }
                else{
                    if(!PLAY_IN_IS_HIGH){
                        setPlaybackRunStatus(STOP);
+                       setSwitchLEDState(SWITCH_LED_OFF);
                    }
                }
             }
@@ -823,6 +828,7 @@ void MasterControlStateMachine(void){
                             setLEDAlternateFuncFlag(FALSE);
                             setIndicateOverdubModeFlag(FALSE);
                             u8OperatingMode =  PLAYBACK;
+                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
                             break;
                         default:
                             break;
