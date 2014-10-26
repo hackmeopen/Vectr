@@ -389,6 +389,32 @@ void MasterControlStateMachine(void){
             break;
         case RECORDING:
 
+            if(u8MessageReceivedFlag == TRUE){
+                /*Decode touch and gestures. If a double tap on the bottom occurs,
+                 * enter menu mode*/
+                u16TouchData = pos_and_gesture_struct.u16Touch;
+                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){
+                    u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
+                    u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
+                    switch(u8GestureFlag){
+                        case MENU_MODE:
+                            if(u8MenuModeFlag == FALSE){
+                                u8MenuModeFlag = TRUE;
+                                menuHandlerInit();
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+            else{
+                pos_and_gesture_struct.u16XPosition = p_VectrData->u16CurrentXPosition;
+                pos_and_gesture_struct.u16YPosition = p_VectrData->u16CurrentYPosition;
+                pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
+            }
+
+
             if(u8RecordRunFlag == TRUE && u8SampleTimerFlag == TRUE && u8HoldState == OFF){
                 /*Data is written to and read from the RAM multiple samples at a
                  time, so a buffer must be stored. This stuff looks rough but it removes the memory
@@ -409,29 +435,31 @@ void MasterControlStateMachine(void){
                 }
             }
             else{
-               pos_and_gesture_struct.u16XPosition = memBuffer.sample_1.u16XPosition;
-               pos_and_gesture_struct.u16YPosition = memBuffer.sample_1.u16YPosition;
-               pos_and_gesture_struct.u16ZPosition = memBuffer.sample_1.u16ZPosition;
+                if(u8BufferDataCount == 0){
+                    memBuffer.sample_1.u16XPosition = hold_position_struct.u16XPosition;
+                    memBuffer.sample_1.u16YPosition = hold_position_struct.u16YPosition;
+                    memBuffer.sample_1.u16ZPosition = hold_position_struct.u16ZPosition;
+                    u8BufferDataCount++;
+                }else{
+                    memBuffer.sample_2.u16XPosition = hold_position_struct.u16XPosition;
+                    memBuffer.sample_2.u16YPosition = hold_position_struct.u16YPosition;
+                    memBuffer.sample_2.u16ZPosition = hold_position_struct.u16ZPosition;
+                    u8BufferDataCount = 0;
+                    u8MemCommand = WRITE_RAM;
+                    xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for write
+                    xQueueSend(xRAMWriteQueue, &memBuffer, 0);
+                }
             }
 
-            if(u8MessageReceivedFlag == TRUE){
-                /*Decode touch and gestures. If a double tap on the bottom occurs,
-                 * enter menu mode*/
-                u16TouchData = pos_and_gesture_struct.u16Touch;
-                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){
-                    u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
-                    u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
-                    switch(u8GestureFlag){
-                        case MENU_MODE:
-                            if(u8MenuModeFlag == FALSE){
-                                u8MenuModeFlag = TRUE;
-                                menuHandlerInit();
-                            }
-                            break;
-                        default:
-                            break;
-                    }
-                }
+            
+
+            if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
+                u8HoldActivationFlag = HOLD_ACTIVATE;
+                u8HandHoldFlag =  TRUE;
+            }
+            else if(u8HandPresentFlag == TRUE &&  u8HandHoldFlag == TRUE){
+                u8HandHoldFlag = FALSE;
+                u8HoldActivationFlag = HOLD_DEACTIVATE;
             }
 
            /*Check encoder activations. Could go to live play or implement a hold*/
@@ -712,6 +740,55 @@ void MasterControlStateMachine(void){
              * Double tapping on the bottom leaves overdubbing and goes back to playback.
              */
 
+            /* When overdub is entered, the axes can be turned on or off. Touches
+             * Touches on the left turn on/off x
+             * Touches on the top turn on/off y
+             * Touches on the right turn on/off z
+             */
+            if(u8MessageReceivedFlag == TRUE){
+                u16TouchData = pos_and_gesture_struct.u16Touch;
+                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){//double taps
+                    u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
+                    switch(u8GestureFlag){
+                        case MENU_MODE:
+                            turnOffAllLEDs();
+                            Flags.u8OverdubActiveFlag = FALSE;
+                            setLEDAlternateFuncFlag(FALSE);
+                            setIndicateOverdubModeFlag(FALSE);
+                            u8OperatingMode =  PLAYBACK;
+                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                else if(Flags.u8OverdubActiveFlag != TRUE){
+                    //If overdub is inactive, the outputs can be turned on/off
+                    if(u16TouchData > MGC3130_NO_TOUCH && u8GestureDebounceTimer == 0){
+                        u8GestureFlag = decodeXYZTouchGesture(u16TouchData);
+                        u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
+                        switch(u8GestureFlag){
+                            case X_OUTPUT_INDEX:
+                                p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] ^= 1;
+                                break;
+                            case Y_OUTPUT_INDEX:
+                                p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] ^= 1;
+                                break;
+                            case Z_OUTPUT_INDEX:
+                                p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX] ^= 1;
+                                break;
+                            default:
+                                break;
+                        }
+                        indicateActiveAxes(OVERDUB);
+                    }
+                }
+            }else{
+                pos_and_gesture_struct.u16XPosition = p_VectrData->u16CurrentXPosition;
+                pos_and_gesture_struct.u16YPosition = p_VectrData->u16CurrentYPosition;
+                pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
+            }
+
             /*If ovedub isn't active, indicate the active axes by flashing the axes that
              are active*/
             //Handle the outputs
@@ -742,7 +819,7 @@ void MasterControlStateMachine(void){
                 }
 
                 //Overdub the retrieved sample
-                if(Flags.u8OverdubActiveFlag == TRUE){
+                if(Flags.u8OverdubActiveFlag == TRUE && u8HandPresentFlag == TRUE){
                     //Overdub the axes with overdub active and for the others write back the accessed data
                     if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1){
                         p_mem_pos_and_gesture_struct->u16XPosition = pos_and_gesture_struct.u16XPosition;
@@ -793,6 +870,9 @@ void MasterControlStateMachine(void){
                     /*Quantize the position.*/
                     quantizePosition(p_mem_pos_and_gesture_struct);
                     xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
+                    if(Flags.u8OverdubActiveFlag == TRUE){
+                        xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+                    }
                 }
             }
 
@@ -812,50 +892,7 @@ void MasterControlStateMachine(void){
                u8SyncTrigger = FALSE;
             }
 
-            /* When overdub is entered, the axes can be turned on or off. Touches
-             * Touches on the left turn on/off x
-             * Touches on the top turn on/off y
-             * Touches on the right turn on/off z
-             */
-            if(u8MessageReceivedFlag == TRUE){
-                u16TouchData = pos_and_gesture_struct.u16Touch;
-                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){//double taps
-                    u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
-                    switch(u8GestureFlag){
-                        case MENU_MODE:
-                            turnOffAllLEDs();
-                            Flags.u8OverdubActiveFlag = FALSE;
-                            setLEDAlternateFuncFlag(FALSE);
-                            setIndicateOverdubModeFlag(FALSE);
-                            u8OperatingMode =  PLAYBACK;
-                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                            break;
-                        default:
-                            break;
-                    }
-                }
-                else if(Flags.u8OverdubActiveFlag != TRUE){
-                    //If overdub is inactive, the outputs can be turned on/off
-                    if(u16TouchData > MGC3130_NO_TOUCH && u8GestureDebounceTimer == 0){
-                        u8GestureFlag = decodeXYZTouchGesture(u16TouchData);
-                        u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
-                        switch(u8GestureFlag){
-                            case X_OUTPUT_INDEX:
-                                p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] ^= 1;
-                                break;
-                            case Y_OUTPUT_INDEX:
-                                p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] ^= 1;
-                                break;
-                            case Z_OUTPUT_INDEX:
-                                p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX] ^= 1;
-                                break;
-                            default:
-                                break;
-                        }
-                        indicateActiveAxes(OVERDUB);
-                    }
-                }
-            }
+            
 
             //External Gate triggered mode.
             if(p_VectrData->u8Control[OVERDUB] == GATE && p_VectrData->u8Source[OVERDUB] == EXTERNAL){
@@ -2150,6 +2187,7 @@ void startNewRecording(void){
 /*End a recording. If automatic play triggering is enabled, go to playback.*/
 void finishRecording(void){
     u8RecordRunFlag = FALSE;
+    u8HoldState = OFF;
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
     calculateClockTimer(u32PlaybackSpeed);
@@ -2255,6 +2293,7 @@ void switchStateMachine(void){
                             u8OperatingMode = PLAYBACK;
                             setPlaybackRunStatus(RUN);
                             u8HoldState = OFF;//Turn off hold to start playback.
+                            u8HoldActivationFlag = HOLD_DEACTIVATE;
                         }
                         else{//external control = arm playback
                             if(u8PlaybackArmedFlag != ARMED){
@@ -2313,6 +2352,7 @@ void switchStateMachine(void){
                         u8OperatingMode = PLAYBACK;
                         u8PlaybackRunFlag = RUN;
                         resetRAMReadAddress();//Recording ends go to the beginning of the sequence
+                        u8HoldActivationFlag = HOLD_DEACTIVATE;
                     }
                     else{//external control = arm playback
 
@@ -2398,6 +2438,7 @@ void switchStateMachine(void){
                         if(p_VectrData->u8PlaybackMode != FLIP &&
                            p_VectrData->u8PlaybackMode != RETRIGGER){
                             if(u8PlaybackRunFlag != RUN){
+                                u8HoldActivationFlag = HOLD_DEACTIVATE;
                                 setPlaybackRunStatus(RUN);
                                 u8HoldState = OFF;//Turn off any hold.
                             }
