@@ -10,6 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
+//TODO: Check the hold behaviors in all modes
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -1238,6 +1239,28 @@ void runPlaybackMode(void){
             setClockEnableFlag(FALSE);
        }
 
+       /*Check encoder activations. Could go to live play or implement a hold*/
+        if(u8HoldActivationFlag == HOLD_ACTIVATE){
+
+            u8HoldState = ON;
+            STOP_CLOCK_TIMER;
+            setHoldPosition(p_mem_pos_and_gesture_struct);
+            u8HoldActivationFlag = FALSE;
+        }
+        else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
+            START_CLOCK_TIMER;
+            u8HoldState = OFF;
+        }
+        else if(u8LivePlayActivationFlag == TRUE){
+            setSwitchLEDState(OFF);
+            u8HoldState = OFF;
+            if(u8OperatingMode != SEQUENCING){
+                u8OperatingMode = LIVE_PLAY;
+                setPlaybackRunStatus(STOP);
+            }
+            u8LivePlayActivationFlag = FALSE;
+        }
+
        if(u16ModulationOnFlag == TRUE){
             runModulation(p_mem_pos_and_gesture_struct);
         }
@@ -1266,30 +1289,7 @@ void runPlaybackMode(void){
        }
 
        u8SyncTrigger = FALSE;
-    }
-
-
-   /*Check encoder activations. Could go to live play or implement a hold*/
-    if(u8HoldActivationFlag == HOLD_ACTIVATE){
-
-        u8HoldState = ON;
-        STOP_CLOCK_TIMER;
-        setHoldPosition(p_mem_pos_and_gesture_struct);
-        u8HoldActivationFlag = FALSE;
-    }
-    else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
-        START_CLOCK_TIMER;
-        u8HoldState = OFF;
-    }
-    else if(u8LivePlayActivationFlag == TRUE){
-        setSwitchLEDState(OFF);
-        u8HoldState = OFF;
-        if(u8OperatingMode != SEQUENCING){
-            u8OperatingMode = LIVE_PLAY;
-            setPlaybackRunStatus(STOP);
-        }
-        u8LivePlayActivationFlag = FALSE;
-    }
+    }   
 }
 
 /* Air scratch mode behavior.
@@ -2081,13 +2081,13 @@ pos_and_gesture_data * p_hold_data_struct){
                     /*If playback is running, then the behavior is the same for all except
                      the track/live mode where the output becomes live.*/
                     if(u8HoldMode == ZERO){
-                        *(p_u16MemoryPosition + i) = 0;
+                        *p_u16MemoryPosition = 0;
                     }
                     else if(u8HoldMode != TRACKLIVE){
-                        *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
+                        *p_u16MemoryPosition = *p_u16HoldPosition;
                     }
                     else{
-                        *(p_u16MemoryPosition + i) = *(p_u16Position + i);
+                        *p_u16MemoryPosition = *p_u16Position;
                     }
                 }else{
                     switch(u8HoldMode){
@@ -2097,24 +2097,27 @@ pos_and_gesture_data * p_hold_data_struct){
                         case TRACKLIVE:
                         case LIVE:
                             //Overwrite the memory data with the current live data.
-                            *(p_u16MemoryPosition + i) = *(p_u16Position + i);
+                            *p_u16MemoryPosition = *p_u16Position;
                             break;
                         case ZERO:
-                            *(p_u16MemoryPosition + i) = 0;
+                            *p_u16MemoryPosition = 0;
                             break;
                         case ENVELOPE_ZERO:
                             /*If playback has ended, then 0V, otherwise, do nothing.*/
                             if(u8PlaybackRunFlag == ENDED){
-                              *(p_u16MemoryPosition + i) = 0;
+                              *p_u16MemoryPosition = 0;
                             }
                             else{
-                              *(p_u16MemoryPosition + i) = *(p_u16HoldPosition + i);
+                              *p_u16MemoryPosition = *p_u16HoldPosition;
                             }
                             break;
                         default:
                             break;
                     }
                 }
+                p_u16MemoryPosition++;
+                p_u16HoldPosition++;
+                p_u16Position++;
             }
             break;
         case OVERDUBBING:
