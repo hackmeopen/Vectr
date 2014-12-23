@@ -11,6 +11,11 @@
 #include "quantization_tables.h"
 
 //TODO: Check the hold behaviors in all modes
+//TODO: Fix overdubbing behavior
+//TODO: Make the LED blinking indicate state
+//TODO: Make the LED blinking indicate sequencing events
+//TODO: Figure out what it takes to update the MGC3130 library
+//TODO: Specify a solution for microchip demos
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -30,8 +35,8 @@
 static VectrDataStruct VectrData;
 static VectrDataStruct * p_VectrData;
 
-static uint8_t u8KeyPressFlag = FALSE;
-static uint8_t u8EncKeyPressFlag = FALSE;
+static uint8_t u8KeyPressFlag = FALSE;//Main switch pressed
+static uint8_t u8EncKeyPressFlag = FALSE;//Encoder switch pressed
 static uint8_t u8MenuModeFlag = FALSE;
 static uint8_t u8TouchFlag = FALSE;
 static uint8_t u8SequenceRecordedFlag = FALSE;
