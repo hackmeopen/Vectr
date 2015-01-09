@@ -16,8 +16,13 @@
 //TODO: Make the LED blinking indicate sequencing events
 //TODO: Figure out what it takes to update the MGC3130 library
 //TODO: Specify a solution for microchip demos
+<<<<<<< HEAD
 //TODO: Fix going to live mode when playback is stopped.
 //TODO: Update MPLAB Harmony
+=======
+//TODO: Test Fix going to live mode when playback is stopped.
+//TODO: Test Update MPLAB Harmony
+>>>>>>> c378792d6792af49c03909209ca01dfa05053a79
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -753,10 +758,14 @@ void MasterControlStateMachine(void){
              * Touches on the top turn on/off y
              * Touches on the right turn on/off z
              */
+
+            /*Should menu mode be accessible in overdub mode? Maybe when
+             overdub isn't running?*/
             if(u8MessageReceivedFlag == TRUE){
                 u16TouchData = pos_and_gesture_struct.u16Touch;
                 if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){//double taps
                     u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
+                    /*Double tap enters menu mode*/
                     switch(u8GestureFlag){
                         case MENU_MODE:
                             turnOffAllLEDs();
@@ -797,12 +806,15 @@ void MasterControlStateMachine(void){
                 pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
             }
 
-            /*If ovedub isn't active, indicate the active axes by flashing the axes that
-             are active*/
-            //Handle the outputs
+            /*Overdub running is like playback running. It's whether or not
+             playback is running or it's stopped.*/
             if(u8OverdubRunFlag == TRUE && u8SampleTimerFlag == TRUE){
 
+                /*We read two sets of samples at a time. So, it takes two
+                 cycles to get through them. In the first cycle, we initiate a read
+                 and in the second, we just use the data.*/
                 if(u8BufferDataCount == 0){
+
                     xQueueReceive(xRAMReadQueue, &memBuffer, 0);
 
                     if(p_VectrData->u8PlaybackMode != PENDULUM){
@@ -826,7 +838,8 @@ void MasterControlStateMachine(void){
                     u8BufferDataCount = 0;
                 }
 
-                //Overdub the retrieved sample
+                /*This overdubbing works like a punch in/punchout except the punch in event
+                 is the hand being present and the punch out is when the hand. */
                 if(Flags.u8OverdubActiveFlag == TRUE && u8HandPresentFlag == TRUE){
                     //Overdub the axes with overdub active and for the others write back the accessed data
                     if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1){
@@ -853,7 +866,7 @@ void MasterControlStateMachine(void){
                         p_overdub_pos_and_gesture_struct->u16ZPosition =  p_mem_pos_and_gesture_struct->u16ZPosition;
                     }
                     
-
+                    /*Is this a problem? Because we have a read above.*/
                     if(u8BufferDataCount == 0){
                         u8MemCommand = WRITETHENREAD_RAM;
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for OVERDUB
@@ -896,11 +909,8 @@ void MasterControlStateMachine(void){
                        setPlaybackDirection(FORWARD_PLAYBACK);
                    }
                }
-
                u8SyncTrigger = FALSE;
             }
-
-            
 
             //External Gate triggered mode.
             if(p_VectrData->u8Control[OVERDUB] == GATE && p_VectrData->u8Source[OVERDUB] == EXTERNAL){
@@ -966,7 +976,8 @@ void MasterControlStateMachine(void){
             /*Overdub - Keep track of airwheel data but don't do anything about it*/
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
             u16LastAirWheelData = u16AirwheelData;
-            break;
+            break;//Overdubbing end
+
         case SEQUENCING:
 
             /* For Sequencing mode, the LEDs indicate the sequences that are available to play.
@@ -1258,15 +1269,7 @@ void runPlaybackMode(void){
             START_CLOCK_TIMER;
             u8HoldState = OFF;
         }
-        else if(u8LivePlayActivationFlag == TRUE){
-            setSwitchLEDState(OFF);
-            u8HoldState = OFF;
-            if(u8OperatingMode != SEQUENCING){
-                u8OperatingMode = LIVE_PLAY;
-                setPlaybackRunStatus(STOP);
-            }
-            u8LivePlayActivationFlag = FALSE;
-        }
+        else 
 
        if(u16ModulationOnFlag == TRUE){
             runModulation(p_mem_pos_and_gesture_struct);
@@ -1279,6 +1282,16 @@ void runPlaybackMode(void){
         /*Quantize the position.*/
         quantizePosition(p_mem_pos_and_gesture_struct);
         xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
+   }
+
+   if(u8LivePlayActivationFlag == TRUE){
+        setSwitchLEDState(OFF);
+        u8HoldState = OFF;
+        if(u8OperatingMode != SEQUENCING){
+            u8OperatingMode = LIVE_PLAY;
+            setPlaybackRunStatus(STOP);
+        }
+        u8LivePlayActivationFlag = FALSE;
    }
        
    if(u8SyncTrigger == TRUE){
