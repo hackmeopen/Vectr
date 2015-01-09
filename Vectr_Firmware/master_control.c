@@ -16,6 +16,8 @@
 //TODO: Make the LED blinking indicate sequencing events
 //TODO: Figure out what it takes to update the MGC3130 library
 //TODO: Specify a solution for microchip demos
+//TODO: Fix going to live mode when playback is stopped.
+//TODO: Update MPLAB Harmony
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
