@@ -10,19 +10,19 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
+//TODO: Change the record input behavior - Add Auto loop recording
+//TODO: Change the record input - Add NUMBR to Record to count a set number of clocks
+//TODO: Change the record input - Use the record input to keep synchronized
+//TODO: Add the above behaviors to Overdub as well.
 //TODO: Check the hold behaviors in all modes
 //TODO: Fix overdubbing behavior
 //TODO: Make the LED blinking indicate state
 //TODO: Make the LED blinking indicate sequencing events
 //TODO: Figure out what it takes to update the MGC3130 library
 //TODO: Specify a solution for microchip demos
-<<<<<<< HEAD
 //TODO: Fix going to live mode when playback is stopped.
-//TODO: Update MPLAB Harmony
-=======
-//TODO: Test Fix going to live mode when playback is stopped.
-//TODO: Test Update MPLAB Harmony
->>>>>>> c378792d6792af49c03909209ca01dfa05053a79
+//TODO: Fix the behavior to go to hold or live playback, simple turns.
+
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -183,7 +183,7 @@ void MasterControlStateMachine(void){
     static uint8_t u8GestureDebounceTimer;
     static uint16_t u16LastAirWheelData;
     int16_t i16AirWheelChange;
-    uint8_t u8SampleTimerFlag;//used when the clock is running very slowly to make sure gestures respond
+    uint8_t u8SampleTimerFlag;
     io_event_message event_message;
     uint8_t u8PlayTrigger = NO_TRIGGER;
     uint8_t u8RecordTrigger = NO_TRIGGER;
@@ -198,7 +198,8 @@ void MasterControlStateMachine(void){
     //This queue receives position and gesture data from the I2C algorithm
     u8MessageReceivedFlag = xQueueReceive(xPositionQueue, &pos_and_gesture_struct, 0);
 
-    //Run menu mode if it's active
+    //Run menu mode if it's active. The encoder is either used for menu mode or for
+    //live interactions. Can't be both at the same time.
     if(u8MenuModeFlag == TRUE){
         MenuStateMachine();
     }
@@ -391,6 +392,7 @@ void MasterControlStateMachine(void){
                     }
                 }
             }
+            /*Check if it's time to start recording.*/
             if(u8RecordingArmedFlag == ARMED){
                 if(u8RecordTrigger == TRIGGER_WENT_HIGH){/*If we received the record trigger.*/
                     u8HoldState = OFF;
@@ -400,8 +402,8 @@ void MasterControlStateMachine(void){
                 }
             }
             break;
-        case RECORDING:
-
+//RECORDING
+        case RECORDING:  
             if(u8MessageReceivedFlag == TRUE){
                 /*Decode touch and gestures. If a double tap on the bottom occurs,
                  * enter menu mode*/
@@ -509,6 +511,11 @@ void MasterControlStateMachine(void){
              * If the mode is gate, look for a falling edge trigger.
              */
 
+            /*New TRIGA and counting considerations...
+             *When the gate goes low, go straight to playback. Automatically without needing a switch press.
+             *For trigger mode, count the number of triggers and then go automatically to playback.
+             */
+
             /*If we're in gate mode, then a low level stops recording. A high level starts recording.
              */
             if(p_VectrData->u8Control[RECORD] == GATE && p_VectrData->u8Source[RECORD] == EXTERNAL){
@@ -551,6 +558,8 @@ void MasterControlStateMachine(void){
                     }
                 }
             }
+
+            /**/
             if(u8RecordingArmedFlag == ARMED){
                 if(u8RecordTrigger == TRIGGER_WENT_HIGH){/*If we received the record trigger.*/
                     u8RecordingArmedFlag = NOT_ARMED;
@@ -3145,6 +3154,14 @@ void setCurrentLoopMode(uint8_t u8NewSetting){
     if(u8NewSetting == LOOPING){
         setPlaybackDirection(FORWARD_PLAYBACK);
     }
+}
+
+uint8_t getCurrentRecordClocks(void){
+    return p_VectrData->u8NumRecordClocks;
+}
+
+void setCurrentRecordClocks(uint8_t u8NewSetting){
+    p_VectrData->u8NumRecordClocks = u8NewSetting;
 }
 
 uint8_t getCurrentGateMode(void){

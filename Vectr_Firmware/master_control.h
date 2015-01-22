@@ -270,6 +270,7 @@ typedef struct{
     uint8_t u8MuteState[NUMBER_OF_OUTPUTS];
     uint8_t u8ClockMode;
     uint8_t u8GateMode;
+    uint8_t u8NumRecordClocks;//The number of clocks to be counted for auto recording.
 }VectrDataStruct;
 
 void MasterControlInit(void);
@@ -328,6 +329,8 @@ void setResetFlag(void);
 uint8_t getResetFlag(void);
 void clearResetFlag(void);
 void defaultSettings(void);
+uint8_t getCurrentRecordClocks(void);
+void setCurrentRecordClocks(uint8_t u8NewSetting);
 
 
 #endif	/* MASTER_CONTROL_H */

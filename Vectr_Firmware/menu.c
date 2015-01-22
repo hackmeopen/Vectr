@@ -64,11 +64,13 @@ const uint8_t u8StandardSubMenuMapping[MAX_NUM_OF_LOAD_STORE_LOCATIONS] =
   LED5
 };
 
-const uint8_t u8PlaySubMenuMapping[NUM_OF_PLAYBACK_SUBMENUS] =
+const uint8_t u8PlaySubMenuMapping[5] =
 {
     LED20,
     LED19,
-    LED18
+    LED18,
+    LED17,
+    LED16
 };
 
 const uint8_t u8BottomParameterMapping[NUM_OF_BOTTOM_PARAMETERS] =
@@ -682,7 +684,6 @@ void editRecParameter(uint8_t u8RecPlayOdub){
 
     switch(i8SubMenuState){
         case SOURCE:
-
             u8CurrentParameter = getCurrentSource(u8RecPlayOdub);
             setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
             u8CurrentParameter ^= 1;
@@ -724,6 +725,21 @@ void editRecParameter(uint8_t u8RecPlayOdub){
             setCurrentLoopMode(u8CurrentParameter);
             setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
             break;
+        case CLK_NUMBER:
+            u8CurrentParameter = getCurrentRecordClocks();
+            setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
+            if(i8IncDecFlag){
+               if(++u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
+                   u8CurrentParameter = 0;
+               }
+            }else{
+               if(--u8CurrentParameter > NUM_OF_CLOCK_SETTINGS){
+                   u8CurrentParameter = NUM_OF_CLOCK_SETTINGS-1;
+               }
+            }
+            setCurrentRecordClocks(u8CurrentParameter);
+            setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
+            break;
     }
 
     i8MenuChangeFlag = 0;
@@ -752,14 +768,19 @@ void changeRecSubMenuState(void){
         i8SubMenuState++;
     }
 
-    i8MenuChangeFlag = 0;
-
     if(i8MainMenuState != PLAYBACK_MENU){
-        if(i8SubMenuState >= (NUM_OF_REC_ODUB_SUBMENUS+1)){
+        if(i8SubMenuState > (CONTROL) && i8SubMenuState < CLK_NUMBER){
+            if(i8MenuChangeFlag < 0){
+                i8SubMenuState = CONTROL;
+            }else{
+                i8SubMenuState = CLK_NUMBER;
+            }
+        }
+        else if(i8SubMenuState > CLK_NUMBER){
             i8SubMenuState = SOURCE;
         }
         else if(i8SubMenuState < 1){
-            i8SubMenuState = CONTROL;
+            i8SubMenuState = CLK_NUMBER;
         }
     }
     else{
@@ -771,6 +792,7 @@ void changeRecSubMenuState(void){
         }
     }
 
+    i8MenuChangeFlag = 0;
     setLEDState(u8PlaySubMenuMapping[i8SubMenuState-1], BLINK);
 }
 
