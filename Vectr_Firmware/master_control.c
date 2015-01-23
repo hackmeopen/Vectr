@@ -22,6 +22,8 @@
 //TODO: Specify a solution for microchip demos
 //TODO: Fix going to live mode when playback is stopped.
 //TODO: Fix the behavior to go to hold or live playback, simple turns.
+//TODO: Add new settings to storage in flash.
+//TODO: Implement the update flash file table function
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -1214,6 +1216,7 @@ void defaultSettings(void){
     VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
+    VectrData.u8NumRecordClocks = CLOCK_PULSE_2;
 }
 
 void runPlaybackMode(void){

@@ -120,11 +120,6 @@ void __attribute__( (interrupt(ipl3), vector(43))) vDMA1InterruptWrapper( void )
 void __attribute__( (interrupt(ipl3), vector(44))) vDMA2InterruptWrapper( void );
 void __attribute__( (interrupt(ipl3), vector(45))) vDMA3InterruptWrapper( void );
 
-/*TO DO: Finish out the linearity.
-        Set up the menu system.
-        Store sequences in Flash.
-        Configure the bootloader.
- */
 
 // *****************************************************************************
 // *****************************************************************************
@@ -323,8 +318,13 @@ void vTaskSPIMemory(void * pvParameters){
 
     readFlashFileTable();
 
+    /*If the unit is new, the file table needs to be established.
+     If the unit has been updated to contain new settings, then the
+     file table needs to be restructured.*/
     if(fileTableIsNotInitialized()){
         initializeFileTable();
+    }else if(fileTableIsNotCurrent()){
+        updateFileTable();
     }
 
     LoadSettingsFromFileTable();

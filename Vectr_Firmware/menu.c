@@ -7,7 +7,6 @@
 #include "master_control.h"
 #include "mem.h"
 
-
 static  uint16_t u16encState;
 static  int16_t  i16value;
 static uint8_t u8encALastState,
@@ -667,6 +666,12 @@ void initializeRecParameterMode(uint8_t u8RecPlayOdub){
             u8CurrentParameter = getCurrentLoopMode();
             setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
             break;
+        case CLK_NUMBER:
+            u8CurrentParameter = getCurrentRecordClocks();
+            setLEDState(u8BottomParameterMapping[u8CurrentParameter], ON);
+            break;
+        default:
+            break;
     }
 
     u8MenuEntryParameter = u8CurrentParameter;
@@ -730,10 +735,10 @@ void editRecParameter(uint8_t u8RecPlayOdub){
             setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
             if(i8IncDecFlag){
                if(++u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
-                   u8CurrentParameter = 0;
+                   u8CurrentParameter = 1;
                }
             }else{
-               if(--u8CurrentParameter > NUM_OF_CLOCK_SETTINGS){
+               if(--u8CurrentParameter == 0){
                    u8CurrentParameter = NUM_OF_CLOCK_SETTINGS-1;
                }
             }

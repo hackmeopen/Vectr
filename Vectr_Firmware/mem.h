@@ -214,7 +214,8 @@ uint32_t getFlashFirstSampleAddress(void);
 uint32_t getFlashReadAddress(void);
 uint32_t getMemoryStartAddress(void);
 uint32_t getEndOfSequenceAddress(void);
-
+uint8_t fileTableIsNotCurrent(void);
+void updateFileTable(void);
 
 #endif	/* MEM_H */
 

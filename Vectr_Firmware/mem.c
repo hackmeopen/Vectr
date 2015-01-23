@@ -574,6 +574,18 @@ uint8_t fileTableIsNotInitialized(void){
     }
 }
 
+//Check to see if the file table is the right length for the current data structure.
+uint8_t fileTableIsNotCurrent(void){
+    uint16_t u16FileTableSize = sizeof(file_table);
+
+    if(ftFileTable.flash_file_table[0].u32FileLength != u16FileTableSize){
+        return true;
+    }
+    else{
+        return false;
+    }
+}
+
 //Set up a new device.
 void initializeFileTable(void){
     uint8_t * p_u8DataStructItem;
@@ -611,6 +623,13 @@ void initializeFileTable(void){
     //Write the file table
     writeFlashFileTable();
 
+}
+
+/*This function updates the file table to accompany a firmware update. It needs
+ to preserve the old file structure and setting while adding newly added
+ settings for new features.*/
+void updateFileTable(void){
+    //Figure out how short the file table is
 }
 
 void loadSettingsFromFileTable(uint8_t u8Index){
