@@ -321,11 +321,12 @@ void vTaskSPIMemory(void * pvParameters){
     /*If the unit is new, the file table needs to be established.
      If the unit has been updated to contain new settings, then the
      file table needs to be restructured.*/
-    if(fileTableIsNotInitialized()){
+  //  if(fileTableIsNotInitialized()){
         initializeFileTable();
-    }else if(fileTableIsNotCurrent()){
-        updateFileTable();
-    }
+//    }
+//    else if(fileTableIsNotCurrent()){
+//        updateFileTable();
+//    }
 
     LoadSettingsFromFileTable();
 

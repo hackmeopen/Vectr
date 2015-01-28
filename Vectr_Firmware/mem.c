@@ -629,7 +629,53 @@ void initializeFileTable(void){
  to preserve the old file structure and setting while adding newly added
  settings for new features.*/
 void updateFileTable(void){
+    uint16_t u16FileTableSize = sizeof(file_table);
+    uint8_t u8AddedNumberofBytes;
+    uint16_t u16OldNumberofByte = ftFileTable.flash_file_table[0].u32FileLength;
+    uint8_t u8TableIndex;
+    uint8_t u8EntryIndex;
+    uint8_t u8NewEntryIndex;
+    uint8_t * pu8FileTableEntry = (uint8_t *) &ftFileTable + u16FileTableSize - 1;//point to the end of the file table
+    uint8_t * pu8SettingsTableEntry;
+    uint8_t * pVectrData;
+
     //Figure out how short the file table is
+    u8AddedNumberofBytes = u16FileTableSize - ftFileTable.flash_file_table[0].u32FileLength;
+
+    //Point to the end of the file table recovered from memory.
+    pu8SettingsTableEntry =  (uint8_t *) &ftFileTable;
+    pu8SettingsTableEntry += sizeof(ftFileTable) - 1;//This lines up with the last member
+    pu8SettingsTableEntry -= u8AddedNumberofBytes;//Pointing to the end of the old table
+
+    u8AddedNumberofBytes /= MAXIMUM_NUMBER_OF_STORED_SEQUENCES+1;//How many bytes were added to each sequence.
+
+   // pu8FileTableEntry -= u8AddedNumberofBytes;//The new end of the file table.
+
+    //Move the bytes to the proper location.
+    //Now we have to take the bytes and space them out to fit the new size.
+    //Start with the end.
+    for(u8TableIndex = 0; u8TableIndex < MAXIMUM_NUMBER_OF_STORED_SEQUENCES+1; u8TableIndex++){
+        pVectrData = getDataStructAddress() + sizeof(VectrDataStruct) - 1;
+
+        //Initialize the new values in the tables.
+        for(u8EntryIndex = 0; u8EntryIndex < u8AddedNumberofBytes; u8EntryIndex++ ){
+            *pu8FileTableEntry = *pVectrData;
+            pu8FileTableEntry--;
+            pVectrData--;
+        }
+
+        //Move the values to the new location.
+        for(u8EntryIndex = sizeof(VectrDataStruct) - u8AddedNumberofBytes; u8EntryIndex > 0; u8EntryIndex--){
+            *pu8FileTableEntry = *pu8SettingsTableEntry;
+            pu8FileTableEntry--;
+            pu8SettingsTableEntry--;
+        }
+    }
+
+    ftFileTable.flash_file_table[0].u32FileLength = sizeof(file_table);
+
+    //Write the table back.
+    writeFlashFileTable();
 }
 
 void loadSettingsFromFileTable(uint8_t u8Index){

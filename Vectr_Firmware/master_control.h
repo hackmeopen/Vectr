@@ -216,10 +216,6 @@ enum{
 #define LINEARITY_LED_SCALING   16 //MAX BRIGHTNESS divided by the size of
 /*Record, Playback, and Overdub all have */
 
-
-
-
-
 #define MAXIMUM_RANGE_INDEX 4
 enum{
     RANGE_BI_5V = 0,
@@ -270,8 +266,10 @@ typedef struct{
     uint8_t u8MuteState[NUMBER_OF_OUTPUTS];
     uint8_t u8ClockMode;
     uint8_t u8GateMode;
-    uint8_t u8NumRecordClocks;//The number of clocks to be counted for auto recording.
+    uint8_t u8NumRecordClocks;//The number of clocks to be counted for auto recording and also
+                                //the number of clock multiples for external recording.
 }VectrDataStruct;
+
 
 void MasterControlInit(void);
 void setKeyPressFlag(void);
