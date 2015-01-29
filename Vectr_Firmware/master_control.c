@@ -24,6 +24,7 @@
 //TODO: Fix the behavior to go to hold or live playback, simple turns.
 //TODO: Add new settings to storage in flash.
 //TODO: Implement the update flash file table function
+//TODO: Need to be able to count a number of clock ticks between input clock pulses
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -93,6 +94,10 @@ static uint32_t u32NextClockPulseIndex;
 
 static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
+
+static uint8_t u8CurrentInputClockCount;
+static uint32_t u32NumTicksBetweenClocks;//The length of time expected between clock pulses
+static uint32_t u32NumTicksSinceLastClock;
 
 typedef struct{
     uint8_t u8GestureFlag;
@@ -1216,7 +1221,7 @@ void defaultSettings(void){
     VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-    VectrData.u8NumRecordClocks = CLOCK_PULSE_2;
+    VectrData.u8NumRecordClocks = CLOCK_PULSE_1;
 }
 
 void runPlaybackMode(void){

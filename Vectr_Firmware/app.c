@@ -321,12 +321,12 @@ void vTaskSPIMemory(void * pvParameters){
     /*If the unit is new, the file table needs to be established.
      If the unit has been updated to contain new settings, then the
      file table needs to be restructured.*/
-  //  if(fileTableIsNotInitialized()){
+    if(fileTableIsNotInitialized()){
         initializeFileTable();
-//    }
-//    else if(fileTableIsNotCurrent()){
-//        updateFileTable();
-//    }
+    }
+    else if(fileTableIsNotCurrent()){
+        updateFileTable();
+    }
 
     LoadSettingsFromFileTable();
 
@@ -417,6 +417,10 @@ void vTaskSwitch(void *pvParameters){
     }
 }
 
+
+/*This time and the stuff below counts to generate clock outputs
+ and also counts the time between incoming record and playback
+ clock inputs.*/
 static uint32_t u32ClockTimer;
 static uint32_t u32ClockTimerTriggerCount;
 static uint8_t u8ClockPulseFlag;
