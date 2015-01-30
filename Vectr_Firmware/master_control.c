@@ -95,9 +95,13 @@ static uint32_t u32NextClockPulseIndex;
 static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
 
+#define LENGTH_OF_INPUT_CLOCK_ARRAY   4
+
 static uint8_t u8CurrentInputClockCount;
 static uint32_t u32NumTicksBetweenClocks;//The length of time expected between clock pulses
 static uint32_t u32NumTicksSinceLastClock;
+static uint32_t u32NumTicksBetweenClocksArray[LENGTH_OF_INPUT_CLOCK_ARRAY];
+static uint32_t u32AvgNumTicksBetweenClocks;
 
 typedef struct{
     uint8_t u8GestureFlag;
