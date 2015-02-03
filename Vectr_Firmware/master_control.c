@@ -11,20 +11,17 @@
 #include "quantization_tables.h"
 
 //TODO: Change the record input behavior - Add Auto loop recording
-//TODO: Change the record input - Add NUMBR to Record to count a set number of clocks
 //TODO: Change the record input - Use the record input to keep synchronized
 //TODO: Add the above behaviors to Overdub as well.
 //TODO: Check the hold behaviors in all modes
-//TODO: Fix overdubbing behavior
-//TODO: Make the LED blinking indicate state
-//TODO: Make the LED blinking indicate sequencing events
+//TODO: Test overdubbing behavior
+//TODO: Make the LED blinking indicate sequencing events - clock pulses.
 //TODO: Figure out what it takes to update the MGC3130 library
 //TODO: Specify a solution for microchip demos
 //TODO: Fix going to live mode when playback is stopped.
 //TODO: Fix the behavior to go to hold or live playback, simple turns.
-//TODO: Add new settings to storage in flash.
-//TODO: Implement the update flash file table function
 //TODO: Need to be able to count a number of clock ticks between input clock pulses
+//TODO: Make LEDs dim or add screen saver mode when inactive for 5 minutes.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -98,6 +95,7 @@ static uint16_t u16CurrentScratchSpeedIndex;
 #define LENGTH_OF_INPUT_CLOCK_ARRAY   4
 
 static uint8_t u8CurrentInputClockCount;
+static uint8_t u8ClockLengthOfRecordedSequence;
 static uint32_t u32NumTicksBetweenClocks;//The length of time expected between clock pulses
 static uint32_t u32NumTicksSinceLastClock;
 static uint32_t u32NumTicksBetweenClocksArray[LENGTH_OF_INPUT_CLOCK_ARRAY];
@@ -164,6 +162,42 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct);
 void calculateClockTimer(uint32_t u32PlaybackSpeed);
 void enterAirScratchMode(void);
 uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
+void resetInputClockHandling(void);
+uint8_t handleInputClock(void);
+
+/*Reset all the variables related to the input clock measurements.*/
+void resetInputClockHandling(void){
+    int i;
+
+    u8CurrentInputClockCount = 0;
+    u32NumTicksBetweenClocks = 0;//The length of time expected between clock pulses
+    u32NumTicksSinceLastClock = 0;
+    u32AvgNumTicksBetweenClocks = 0;
+
+    for(i=0; i < LENGTH_OF_INPUT_CLOCK_ARRAY; i++ ){
+        u32NumTicksBetweenClocksArray[i] = 0;
+    }
+}
+
+//If we're recording, we increment the clock. If the new clock count
+//is a multiple of the current clock setting, we return a 1
+//to signify that the loop could end on that clock edge.
+//That doesn't mean that it does end, just that it could.
+uint8_t handleInputClock(void){
+    uint8_t u8modulus;
+
+    u8CurrentInputClockCount++;
+    //Add 1 because we want to end
+    u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+
+    if(u8modulus == 0){
+        return 1;
+    }
+    else{
+        return 0;
+    }
+
+}
 
 void MasterControlInit(void){
 
@@ -522,7 +556,24 @@ void MasterControlStateMachine(void){
              * If the mode is gate, look for a falling edge trigger.
              */
 
-            /*New TRIGA and counting considerations...
+            /* There are a few different behaviors.
+             * 
+             * Internal and External Recording.
+             * For internal recording
+             * 
+             * Triggered mode will start with the switch press and stop with the next switch press.
+             * Gated mode will start with the switch press and end when it's released.
+             * 
+             * For External recording
+             * 
+             * Triggered mode will start with the switch press. When the switch is pressed the second time
+             * the loop ends when the counted number of input clock edges is a multiple of the current clock 
+             * setting.
+             * 
+             * Gated mode start after a switch press and the clock input goes high.
+             * It will end when the switch has been pressed and the clock input is low.
+             *
+             *
              *When the gate goes low, go straight to playback. Automatically without needing a switch press.
              *For trigger mode, count the number of triggers and then go automatically to playback.
              */
@@ -580,13 +631,16 @@ void MasterControlStateMachine(void){
             }
             else if(u8RecordingArmedFlag == DISARMED){
                 /*Stop recording
-                 * In trigger mode, a low->high will stop recording.
                  * In gate mode, a high->low will stop recording.
+                 * In trigger mode, a low->high will stop recording when
+                 *
                  */
                 if(p_VectrData->u8Control[RECORD] == TRIGGER){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                        u8RecordingArmedFlag = NOT_ARMED;
-                        finishRecording();
+                        if(handleInputClock()){
+                            u8RecordingArmedFlag = NOT_ARMED;
+                            finishRecording();
+                        }
                     }
                 }else{
                     /*Gate control*/
@@ -595,7 +649,17 @@ void MasterControlStateMachine(void){
                         finishRecording();
                     }
                 }
+            }else{
+                //Recording is "NOT_ARMED", meaning it is running. 
+                //If we're in EXTERNAL recording mode, we need to count edges.
+                //
+                if(p_VectrData->u8Control[RECORD] == TRIGGER){
+                    if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                        handleInputClock();
+                    }
+                }
             }
+
             
             /*Recording - Keep track of airwheel but don't do anything with it to
              keep jumps from occurring*/
@@ -2222,6 +2286,7 @@ void startNewRecording(void){
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
     setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+    resetInputClockHandling();
 
     if(p_VectrData->u8Control[RECORD] == TRIGGER && p_VectrData->u8Source[RECORD] == EXTERNAL){
         u8RecordingArmedFlag = NOT_ARMED;
@@ -2236,6 +2301,7 @@ void finishRecording(void){
     setStoredSequenceLocationFlag(STORED_IN_RAM);
     calculateClockTimer(u32PlaybackSpeed);
     setPlaybackDirection(FORWARD_PLAYBACK);
+    u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
                     
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.

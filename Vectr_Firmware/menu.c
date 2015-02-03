@@ -735,10 +735,10 @@ void editRecParameter(uint8_t u8RecPlayOdub){
             setLEDState(u8BottomParameterMapping[u8CurrentParameter], OFF);
             if(i8IncDecFlag){
                if(++u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
-                   u8CurrentParameter = 1;
+                   u8CurrentParameter = 0;
                }
             }else{
-               if(--u8CurrentParameter == 0){
+               if(--u8CurrentParameter >= NUM_OF_CLOCK_SETTINGS){
                    u8CurrentParameter = NUM_OF_CLOCK_SETTINGS-1;
                }
             }

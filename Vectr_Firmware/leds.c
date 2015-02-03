@@ -17,8 +17,8 @@ static uint32_t u32MenuFuncLEDMask;
 static uint8_t u8AlternateFuncFlag = FALSE;
 static uint8_t u8AlternateFuncState = INDICATE_MENU;
 static uint8_t u8BlinkFlag[NUM_OF_BLUE_LEDS];
-static uint8_t u8BlinkState;
-static uint8_t u8BlinkTimer;
+static uint8_t u8MenuBlinkState;
+static uint8_t u8MenuBlinkTimer;
 static uint8_t u8IndicateOverdubModeFlag;
 static uint8_t u8IndicateAxesState;
 static uint8_t u8IndicateSeqeunceModeFlag;
@@ -28,7 +28,7 @@ static uint8_t u8PowerUpSequenceFlag = TRUE;
 static uint8_t u8IndicateErrorFlag = FALSE;
 static uint8_t u8IndicateMuteModeFlag = FALSE;
 
-#define BLINK_TIMER_RESET   100
+#define MENU_BLINK_TIMER_RESET   60
 
 const uint8_t led_ordered_array[NUM_OF_BLUE_LEDS] = {LED1,
  LED2   ,
@@ -184,10 +184,10 @@ void ledStateMachine(void){
             break;
     }
 
-    //Run the blinking
-    if(u8BlinkTimer-- == 0){
-        u8BlinkTimer = BLINK_TIMER_RESET;
-        u8BlinkState ^= ON;
+    //Run the blinking for the menu LEDs
+    if(u8MenuBlinkTimer-- == 0){
+        u8MenuBlinkTimer = MENU_BLINK_TIMER_RESET;
+        u8MenuBlinkState ^= ON;
         if(u8SwitchLEDState > SWITCH_LED_RED){
             BlinkSwitchLED();
         }
@@ -196,7 +196,6 @@ void ledStateMachine(void){
             u16_red_LED_duty_cycle = MAX_BRIGHTNESS;
             u8IndicateErrorFlag = FALSE;
         }
-
     }
 
     if(u8IndicateOverdubModeFlag == TRUE){
@@ -304,7 +303,7 @@ void runIndicateSequencesMode(void){
             }
             setTopLEDs(MAX_BRIGHTNESS, OFF);
             setRightLEDs(MAX_BRIGHTNESS, OFF);
-            if(u8BlinkTimer == BLINK_TIMER_RESET){
+            if(u8MenuBlinkTimer == MENU_BLINK_TIMER_RESET){
                 u8IndicateSequencesState++;
             }
             break;
@@ -317,7 +316,7 @@ void runIndicateSequencesMode(void){
             }
             setLeftLEDs(MAX_BRIGHTNESS, OFF);
             setRightLEDs(MAX_BRIGHTNESS, OFF);
-            if(u8BlinkTimer == BLINK_TIMER_RESET){
+            if(u8MenuBlinkTimer == MENU_BLINK_TIMER_RESET){
                 u8IndicateSequencesState++;
             }
             break;
@@ -330,7 +329,7 @@ void runIndicateSequencesMode(void){
             }
             setTopLEDs(MAX_BRIGHTNESS, OFF);
             setLeftLEDs(MAX_BRIGHTNESS, OFF);
-            if(u8BlinkTimer == BLINK_TIMER_RESET){
+            if(u8MenuBlinkTimer == MENU_BLINK_TIMER_RESET){
                 u8IndicateSequencesState++;
             }
             break;
@@ -346,7 +345,7 @@ void runIndicateSequencesMode(void){
                 setLeftLEDs(MAX_BRIGHTNESS, OFF);
             }
 
-            if(u8BlinkTimer == BLINK_TIMER_RESET){
+            if(u8MenuBlinkTimer == MENU_BLINK_TIMER_RESET){
                 u8IndicateSequencesState = 0;
             }
             break;
@@ -399,7 +398,7 @@ uint8_t runPowerUpSequence(void){
 void LEDIndicateError(void){
     u8IndicateErrorFlag = TRUE;
     turnOffAllLEDs();
-    u8BlinkTimer = BLINK_TIMER_RESET;
+    u8MenuBlinkTimer = MENU_BLINK_TIMER_RESET;
 }
 
 void setSwitchLEDState(uint8_t u8NewState){
@@ -458,8 +457,8 @@ void setIndicateOverdubModeFlag(uint8_t u8NewSetting){
 }
 
 void resetBlink(void){
-    u8BlinkTimer = BLINK_TIMER_RESET;
-    u8BlinkState = ON;
+    u8MenuBlinkTimer = MENU_BLINK_TIMER_RESET;
+    u8MenuBlinkState = ON;
 }
 
 void setLEDAlternateFuncFlag(uint8_t u8NewState){
@@ -519,28 +518,28 @@ void set_led_pwms(uint8_t u8Index){
     updateBlueLEDs(u8Index);
 
  
-    if(u8BlinkFlag[u8Index] != BLINK || u8BlinkState == ON){
+    if(u8BlinkFlag[u8Index] != BLINK || u8MenuBlinkState == ON){
         PLIB_OC_PulseWidth16BitSet( LED_PWM1_OC_ID, u16_blue_LED_duty_cycles[u8Index]);
     }else{
         PLIB_OC_PulseWidth16BitSet( LED_PWM1_OC_ID, 0);
     }
 
     u8Index++;
-    if(u8BlinkFlag[u8Index] != BLINK || u8BlinkState == ON){
+    if(u8BlinkFlag[u8Index] != BLINK || u8MenuBlinkState == ON){
         PLIB_OC_PulseWidth16BitSet( LED_PWM3_OC_ID, u16_blue_LED_duty_cycles[u8Index]);
     }else{
         PLIB_OC_PulseWidth16BitSet( LED_PWM3_OC_ID, 0);
     }
 
     u8Index++;
-    if(u8BlinkFlag[u8Index] != BLINK || u8BlinkState == ON){
+    if(u8BlinkFlag[u8Index] != BLINK || u8MenuBlinkState == ON){
         PLIB_OC_PulseWidth16BitSet( LED_PWM4_OC_ID, u16_blue_LED_duty_cycles[u8Index]);
     }else{
         PLIB_OC_PulseWidth16BitSet( LED_PWM4_OC_ID, 0);
     }
 
     u8Index++;
-    if(u8BlinkFlag[u8Index] != BLINK || u8BlinkState == ON){
+    if(u8BlinkFlag[u8Index] != BLINK || u8MenuBlinkState == ON){
         PLIB_OC_PulseWidth16BitSet( LED_PWM5_OC_ID, u16_blue_LED_duty_cycles[u8Index]);
     }else{
         PLIB_OC_PulseWidth16BitSet( LED_PWM5_OC_ID, 0);
