@@ -186,7 +186,17 @@ void resetInputClockHandling(void){
 uint8_t handleInputClock(void){
     uint8_t u8modulus;
 
+    //Blink the switch LED to indicate clock. Green on the first beat, otherwise red.
+    if(u8CurrentInputClockCount != 0){
+        setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+    }
+    else{
+        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+    }
+
     u8CurrentInputClockCount++;
+    
+
     //Add 1 because we want to end
     u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
 
@@ -196,6 +206,8 @@ uint8_t handleInputClock(void){
     else{
         return 0;
     }
+
+    
 
 }
 
@@ -2092,6 +2104,10 @@ uint8_t getPlaybackMode(void){
     return p_VectrData->u8PlaybackMode;
 }
 
+uint8_t getRecordSource(void){
+    return p_VectrData->u8Source[RECORD];
+}
+
 /*This function is executed during playback when a sync pulse arrives.*/
 void syncHandler(void){
     /*Different modes for the different playback modes.
@@ -2276,7 +2292,7 @@ void startNewRecording(void){
     resetSpeed();
     u8OperatingMode = RECORDING;
     u8RecordRunFlag = TRUE;
-    setPlaybackRunStatus(FALSE);
+    u8PlaybackRunFlag = FALSE;
     resetRAMWriteAddress();
     memBuffer.sample_1.u16XPosition = pos_and_gesture_struct.u16XPosition;
     memBuffer.sample_1.u16YPosition = pos_and_gesture_struct.u16YPosition;
@@ -2285,7 +2301,11 @@ void startNewRecording(void){
     memBuffer.sample_2.u16YPosition = pos_and_gesture_struct.u16YPosition;
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
-    setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+
+    if(p_VectrData->u8Source[RECORD] == SWITCH){
+        setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+    }
+
     resetInputClockHandling();
 
     if(p_VectrData->u8Control[RECORD] == TRIGGER && p_VectrData->u8Source[RECORD] == EXTERNAL){

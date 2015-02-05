@@ -298,6 +298,9 @@ void vTaskLEDs(void * pvParameters){
 
     setLEDAlternateFuncFlag(FALSE);
 
+    //Turn off the switch LED.
+    setSwitchLEDState(SWITCH_LED_OFF);
+
     for(;;){
         ledStateMachine();
     }

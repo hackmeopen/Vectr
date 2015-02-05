@@ -24,11 +24,13 @@ static uint8_t u8IndicateAxesState;
 static uint8_t u8IndicateSeqeunceModeFlag;
 static uint8_t u8SwitchLEDState = SWITCH_LED_OFF;
 static uint8_t u8SwitchLEDBlinkState = FALSE;
+static uint8_t u8SwitchBlinkTimer = 0;
 static uint8_t u8PowerUpSequenceFlag = TRUE;
 static uint8_t u8IndicateErrorFlag = FALSE;
 static uint8_t u8IndicateMuteModeFlag = FALSE;
 
 #define MENU_BLINK_TIMER_RESET   60
+#define SWITCH_BLINK_TIMER_RESET    25
 
 const uint8_t led_ordered_array[NUM_OF_BLUE_LEDS] = {LED1,
  LED2   ,
@@ -188,13 +190,38 @@ void ledStateMachine(void){
     if(u8MenuBlinkTimer-- == 0){
         u8MenuBlinkTimer = MENU_BLINK_TIMER_RESET;
         u8MenuBlinkState ^= ON;
-        if(u8SwitchLEDState > SWITCH_LED_RED){
-            BlinkSwitchLED();
-        }
-
+       
         if(u8IndicateErrorFlag == TRUE){
             u16_red_LED_duty_cycle = MAX_BRIGHTNESS;
             u8IndicateErrorFlag = FALSE;
+        }
+    }
+
+    //Run the blinking for the switch LED
+    if(u8SwitchBlinkTimer-- == 0){
+        //Switch blinking indicates clocks either incoming or outgoing
+        //If record is set to external triggering
+        /*What I want
+         * The switch LED will blink to indicate incoming clock.
+         * It could toggle with clocks during recording or just blink for each clock.
+         * It will also blink to indicate outgoing clock.
+         * It will blink the opposite color on the first beat in a sequence.
+         * During record, it will blink green on the first beat and then red thereafter.
+         * During playback, it will blink red on the first beat and then green thereafter.
+         *
+         * When the clock edge either arrives or is generated, the LED will be turned on.
+         * The timer will be started.
+         * When it runs out the LED will be turned off.
+         * Make sure we're in a blinky mode though.
+         */
+        if(u8SwitchLEDState > SWITCH_LED_RED){
+            
+            if(getRecordSource() == SWITCH){
+                BlinkSwitchLED();
+            }
+            else{
+                SET_SWITCH_LED_OFF;
+            }
         }
     }
 
@@ -416,10 +443,12 @@ void setSwitchLEDState(uint8_t u8NewState){
         case SWITCH_LED_GREEN_BLINKING:
             SET_SWITCH_LED_GREEN;
             u8SwitchLEDBlinkState = TRUE;
+            u8SwitchBlinkTimer = SWITCH_BLINK_TIMER_RESET;
             break;
         case SWITCH_LED_RED_BLINKING:
             SET_SWITCH_LED_RED;
             u8SwitchLEDBlinkState = TRUE;
+            u8SwitchBlinkTimer = SWITCH_BLINK_TIMER_RESET;
             break;
         case SWITCH_LED_RED_GREEN_ALTERNATING:
             break;

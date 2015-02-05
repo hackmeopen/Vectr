@@ -329,6 +329,7 @@ void clearResetFlag(void);
 void defaultSettings(void);
 uint8_t getCurrentRecordClocks(void);
 void setCurrentRecordClocks(uint8_t u8NewSetting);
+uint8_t getRecordSource(void);
 
 
 #endif	/* MASTER_CONTROL_H */
