@@ -22,6 +22,10 @@
 //TODO: Fix the behavior to go to hold or live playback, simple turns.
 //TODO: Need to be able to count a number of clock ticks between input clock pulses
 //TODO: Make LEDs dim or add screen saver mode when inactive for 5 minutes.
+/*TODO: For externally triggered recording, we need to be able to repeatably restart the loop.
+ *      We can do this by using the switch when we're in externally triggered mode.
+ * */
+//TODO: Check the switch blinking during SCRATCH mode.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -163,7 +167,7 @@ void calculateClockTimer(uint32_t u32PlaybackSpeed);
 void enterAirScratchMode(void);
 uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
 void resetInputClockHandling(void);
-uint8_t handleInputClock(void);
+uint8_t handleRecInputClock(void);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -183,15 +187,29 @@ void resetInputClockHandling(void){
 //is a multiple of the current clock setting, we return a 1
 //to signify that the loop could end on that clock edge.
 //That doesn't mean that it does end, just that it could.
-uint8_t handleInputClock(void){
+uint8_t handleRecInputClock(void){
     uint8_t u8modulus;
 
     //Blink the switch LED to indicate clock. Green on the first beat, otherwise red.
     if(u8CurrentInputClockCount != 0){
-        setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+        if(u8OperatingMode == RECORDING || u8OperatingMode == OVERDUBBING)
+        {
+            setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+        }
+        else
+        {
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        }
     }
     else{
-        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        if(u8OperatingMode == RECORDING || u8OperatingMode == OVERDUBBING)
+        {
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        }
+        else
+        {
+            setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+        }
     }
 
     u8CurrentInputClockCount++;
@@ -206,9 +224,6 @@ uint8_t handleInputClock(void){
     else{
         return 0;
     }
-
-    
-
 }
 
 void MasterControlInit(void){
@@ -649,7 +664,7 @@ void MasterControlStateMachine(void){
                  */
                 if(p_VectrData->u8Control[RECORD] == TRIGGER){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                        if(handleInputClock()){
+                        if(handleRecInputClock()){
                             u8RecordingArmedFlag = NOT_ARMED;
                             finishRecording();
                         }
@@ -667,7 +682,7 @@ void MasterControlStateMachine(void){
                 //
                 if(p_VectrData->u8Control[RECORD] == TRIGGER){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                        handleInputClock();
+                        handleRecInputClock();
                     }
                 }
             }
