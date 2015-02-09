@@ -26,6 +26,7 @@
  *      We can do this by using the switch when we're in externally triggered mode.
  * */
 //TODO: Check the switch blinking during SCRATCH mode.
+//TODO: Implement time quantization
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -183,40 +184,46 @@ void resetInputClockHandling(void){
     }
 }
 
-//If we're recording, we increment the clock. If the new clock count
-//is a multiple of the current clock setting, we return a 1
-//to signify that the loop could end on that clock edge.
-//That doesn't mean that it does end, just that it could.
+/*This function handles the record clock input.
+ * It counts clock pulses.
+ * For recording mode, it counts clock pulses and lets the main master control
+ * function know when the number of clock pulses equals a multiple of the
+ * desired loop length.
+ * For overdubbing, it does the same as recording except that the loop length
+ * doesn't change.
+ * Playback is like overdubbing except that the LED colors are opposite.
+ * And during playback, the LED only blinks for clock when playback is running.
+*/
 uint8_t handleRecInputClock(void){
     uint8_t u8modulus;
 
-    //Blink the switch LED to indicate clock. Green on the first beat, otherwise red.
-    if(u8CurrentInputClockCount != 0){
-        if(u8OperatingMode == RECORDING || u8OperatingMode == OVERDUBBING)
-        {
+    if(u8OperatingMode == RECORDING
+       || (u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
+            && u8HandPresentFlag == TRUE)){
+        if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_RED_BLINKING);
-        }
-        else
-        {
+        }else{
             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         }
+
     }
     else{
-        if(u8OperatingMode == RECORDING || u8OperatingMode == OVERDUBBING)
-        {
+        /*This state is for playback.*/
+        if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-        }
-        else
-        {
+        }else{
             setSwitchLEDState(SWITCH_LED_RED_BLINKING);
         }
     }
 
     u8CurrentInputClockCount++;
     
-
-    //Add 1 because we want to end
+    //Add 1 because we want to end on the 1
     u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+
+    if(u8OperatingMode != RECORDING && u8CurrentInputClockCount == u8ClockLengthOfRecordedSequence){
+        u8CurrentInputClockCount = 0;
+    }
 
     if(u8modulus == 0){
         return 1;
@@ -225,6 +232,17 @@ uint8_t handleRecInputClock(void){
         return 0;
     }
 }
+
+/* What to do with the playback input with this new synchronization mode?
+ * Could I use the record input to keep synchronized and still use the
+ * playback input to start and stop? I sure can!
+ *
+ *
+ * TRIGA for record makes automatic length loops in record mode!
+ *
+ */
+
+
 
 void MasterControlInit(void){
 
@@ -680,7 +698,8 @@ void MasterControlStateMachine(void){
                 //Recording is "NOT_ARMED", meaning it is running. 
                 //If we're in EXTERNAL recording mode, we need to count edges.
                 //
-                if(p_VectrData->u8Control[RECORD] == TRIGGER){
+                if(p_VectrData->u8Control[RECORD] == TRIGGER
+                   && p_VectrData->u8Source[RECORD] == EXTERNAL){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                         handleRecInputClock();
                     }
@@ -767,7 +786,9 @@ void MasterControlStateMachine(void){
                     u16LastAirWheelData = u16AirwheelData;
                 }
             }
-            
+
+
+
             /*If we're in gate mode, then a low level stops playback. A high level starts recording.
              */
             //Change to if trigger IS LOW!!!!!!!
@@ -852,7 +873,19 @@ void MasterControlStateMachine(void){
                     u8RecordTrigger = NO_TRIGGER;
                     startNewRecording();
                 }
+            }else{
+
+                /*This keeps the loop synchronized with the record clock
+                 and keeps the switch blinking with the incoming clock.*/
+                if(u8PlaybackRunFlag == TRUE
+                    && p_VectrData->u8Control[RECORD] == TRIGGER
+                    && p_VectrData->u8Source[RECORD] == EXTERNAL){
+                        if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                            handleRecInputClock();
+                        }
+                }
             }
+
             break;
         /*Overdubbing mode records over the existing recording.*/
         case OVERDUBBING:
@@ -950,7 +983,7 @@ void MasterControlStateMachine(void){
                 }
 
                 /*This overdubbing works like a punch in/punchout except the punch in event
-                 is the hand being present and the punch out is when the hand. */
+                 is the hand being present and the punch out is when the hand leaves. */
                 if(Flags.u8OverdubActiveFlag == TRUE && u8HandPresentFlag == TRUE){
                     //Overdub the axes with overdub active and for the others write back the accessed data
                     if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1){
@@ -1083,7 +1116,19 @@ void MasterControlStateMachine(void){
                         setSwitchLEDState(SWITCH_LED_OFF);
                     }
                 }
-            }  
+            }
+            else{
+                /*Overdub is running. We need to count clocks to keep sync and
+                 * makes the switch LED blink in time.
+                */
+                if(u8OverdubRunFlag == TRUE
+                    && p_VectrData->u8Control[RECORD] == TRIGGER
+                    && p_VectrData->u8Source[RECORD] == EXTERNAL){
+                        if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                            handleRecInputClock();
+                        }
+                }
+            }
             /*Overdub - Keep track of airwheel data but don't do anything about it*/
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
             u16LastAirWheelData = u16AirwheelData;
@@ -2337,6 +2382,7 @@ void finishRecording(void){
     calculateClockTimer(u32PlaybackSpeed);
     setPlaybackDirection(FORWARD_PLAYBACK);
     u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
+    u8CurrentInputClockCount = 0;
                     
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
@@ -2344,11 +2390,11 @@ void finishRecording(void){
         u8BufferDataCount = 0;
         u8OperatingMode = PLAYBACK;
         setPlaybackRunStatus(RUN);
-        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+       // setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
     }
     else{//Regular trigger mode ends recording without starting playback and stays in record mode.
         u8PlaybackRunFlag = ENDED;
-        setSwitchLEDState(SWITCH_LED_OFF);
+       // setSwitchLEDState(SWITCH_LED_OFF);
     }
 }
 
@@ -3236,12 +3282,12 @@ void setPlaybackRunStatus(uint8_t u8NewState){
 
     //Turn the switch LED on or off and start the clock timer or stop it
     if(u8PlaybackRunFlag == TRUE){
-        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+      //  setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         START_CLOCK_TIMER;
     }
     else{
         STOP_CLOCK_TIMER;
-        setSwitchLEDState(SWITCH_LED_OFF);
+     //   setSwitchLEDState(SWITCH_LED_OFF);
     }
 
     u8OverdubRunFlag = u8PlaybackRunFlag;
