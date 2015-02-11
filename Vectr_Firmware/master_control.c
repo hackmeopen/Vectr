@@ -99,7 +99,9 @@ static uint32_t u32NextClockPulseIndex;
 static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
 
-#define LENGTH_OF_INPUT_CLOCK_ARRAY   4
+#define LENGTH_OF_INPUT_CLOCK_ARRAY     4
+#define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
+#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  16
 
 static uint8_t u8CurrentInputClockCount;
 static uint8_t u8ClockLengthOfRecordedSequence;
@@ -107,6 +109,7 @@ static uint32_t u32NumTicksBetweenClocks;//The length of time expected between c
 static uint32_t u32NumTicksSinceLastClock;
 static uint32_t u32NumTicksBetweenClocksArray[LENGTH_OF_INPUT_CLOCK_ARRAY];
 static uint32_t u32AvgNumTicksBetweenClocks;
+static uint32_t u32ExpectedNumTicksBetweenClocks;
 static uint8_t u8CurrentClockArrayIndex;
 
 typedef struct{
@@ -206,6 +209,25 @@ void resetInputClockHandling(void){
 uint8_t handleRecInputClock(void){
     uint8_t u8modulus;
 
+    /* Keep track of the length of time between clocks. To get the info, we request
+     * it from the timer routine and then reset the timer clock to start counting
+     * over again. The tracking loops back around gathering over a set number of
+     * cycles to be able to average the data.
+     * We use this information for a number of reasons.
+     * 1. We want to know if the tempo changed. We can then adjust the playback
+     * speed to suit the change in tempo.
+     * 2. We also want to start and stop the playback based on whether or not the
+     */
+    u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getRecInputClockCount();
+    resetRecInputClockCount();
+    u8CurrentClockArrayIndex++;
+    if(u8CurrentClockArrayIndex > LENGTH_OF_INPUT_CLOCK_ARRAY){
+        u8CurrentClockArrayIndex = 0;
+    }
+
+
+
+    /*Blink the switch LED to indicate incoming record clock signals.*/
     if(u8OperatingMode == RECORDING
        || (u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
             && u8HandPresentFlag == TRUE)){
@@ -223,8 +245,15 @@ uint8_t handleRecInputClock(void){
         }else{
             setSwitchLEDState(SWITCH_LED_RED_BLINKING);
         }
+
+        /* Calculate the running average of time between clocks.
+         * If the result has changed, speed up or slow down the playback.
+         */
+        calculateAvgNumClicksBetweenClocks();
     }
 
+    /*Keep track of the number of record input clocks. Know where we are in the loop
+     and cycle the loop back around in playback and overdubbing.*/
     u8CurrentInputClockCount++;
     
     //Add 1 because we want to end on the 1
@@ -240,6 +269,31 @@ uint8_t handleRecInputClock(void){
     else{
         return 0;
     }
+}
+
+/* Calculate the average number of timer ticks between clock edges. If the recorded sequence
+ * is shorter than the array we are using for averaging, then calculate a shorter average.
+ */
+void calculateAvgNumClicksBetweenClocks(void){
+    int i;
+    uint32_t u32Sum = 0;
+    uint32_t u32Result = 0;
+
+    if(u8ClockLengthOfRecordedSequence > LENGTH_OF_INPUT_CLOCK_ARRAY){
+        for(i=0;i<LENGTH_OF_INPUT_CLOCK_ARRAY;i++){
+            u32Sum += u32NumTicksBetweenClocksArray[i];
+        }
+        u32Result = u32Sum >> LOG_LENGTH_INPUT_CLOCK_ARRAY;
+    }
+    else{
+        for(i=0;i<u8ClockLengthOfRecordedSequence;i++){
+            u32Sum += u32NumTicksBetweenClocksArray[i];
+        }
+        u32Result = u32Sum / u8ClockLengthOfRecordedSequence;
+    }
+
+    u32AvgNumTicksBetweenClocks = u32Result;
+    u32ExpectedNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
 }
 
 /* What to do with the playback input with this new synchronization mode?
@@ -876,6 +930,7 @@ void MasterControlStateMachine(void){
                     setSwitchLEDState(SWITCH_LED_OFF);
                 }
             }
+            
             if(u8RecordingArmedFlag == ARMED){
                 if(u8RecordTrigger == TRIGGER_WENT_HIGH){/*If we received the record trigger.*/
                     u8RecordingArmedFlag = NOT_ARMED;
@@ -884,14 +939,41 @@ void MasterControlStateMachine(void){
                 }
             }else{
 
-                /*This keeps the loop synchronized with the record clock
-                 and keeps the switch blinking with the incoming clock.*/
-                if(u8PlaybackRunFlag == TRUE
-                    && p_VectrData->u8Control[RECORD] == TRIGGER
+                /*If record mode is set to external, we use the record input clock
+                 * to keep the loop synchronized, to adjust to changes in tempo,
+                 * and to start and stop the loop based on the presence or absense of 
+                 * the clock.
+                 */
+                if( p_VectrData->u8Control[RECORD] != GATE
                     && p_VectrData->u8Source[RECORD] == EXTERNAL){
+                    
+                    /* If playback is running, then we are looking for the clock edge.
+                     * If the timer clock has run past the point that we expect 
+                     * the clock plus some margin, then we stop playback.
+                     * 
+                     */
+                    if(u8PlaybackRunFlag == TRUE){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleRecInputClock();
                         }
+                        else{
+                            /* Check to see if the trigger is late. There is margin built into
+                             * the expected number of ticks between clocks.
+                             */
+                            if(getRecInputClockCount() > u32ExpectedNumTicksBetweenClocks){
+                                setPlaybackRunStatus(STOP);
+                            }
+                        }
+                    }
+                    else{
+                        /* If playback is stopped, then we look for a clock edge
+                         * to start playback again.
+                         */
+                        if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                            handleRecInputClock();
+                            setPlaybackRunStatus(RUN);
+                        }
+                    }
                 }
             }
 
@@ -2393,6 +2475,7 @@ void finishRecording(void){
     setPlaybackDirection(FORWARD_PLAYBACK);
     u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
     u8CurrentInputClockCount = 0;
+    calculateAvgNumClicksBetweenClocks();
                     
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
