@@ -27,6 +27,8 @@
  * */
 //TODO: Check the switch blinking during SCRATCH mode.
 //TODO: Implement time quantization
+//TODO: Fix the switch blinking for when the record mode is internal
+//TODO: Implement the hand gate output "being recorded" - Fake the playback.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -105,6 +107,7 @@ static uint32_t u32NumTicksBetweenClocks;//The length of time expected between c
 static uint32_t u32NumTicksSinceLastClock;
 static uint32_t u32NumTicksBetweenClocksArray[LENGTH_OF_INPUT_CLOCK_ARRAY];
 static uint32_t u32AvgNumTicksBetweenClocks;
+static uint8_t u8CurrentClockArrayIndex;
 
 typedef struct{
     uint8_t u8GestureFlag;
@@ -178,6 +181,7 @@ void resetInputClockHandling(void){
     u32NumTicksBetweenClocks = 0;//The length of time expected between clock pulses
     u32NumTicksSinceLastClock = 0;
     u32AvgNumTicksBetweenClocks = 0;
+    u8CurrentClockArrayIndex = 0;
 
     for(i=0; i < LENGTH_OF_INPUT_CLOCK_ARRAY; i++ ){
         u32NumTicksBetweenClocksArray[i] = 0;
@@ -193,6 +197,11 @@ void resetInputClockHandling(void){
  * doesn't change.
  * Playback is like overdubbing except that the LED colors are opposite.
  * And during playback, the LED only blinks for clock when playback is running.
+ *
+ * We're also concerned with staying locked to the input clock. To do this
+ * we count using timer 3 in app.c. We count timer overruns between clock
+ * pulses. From this, we can tell when the clock has stopped and when the clock
+ * has changed speed.
 */
 uint8_t handleRecInputClock(void){
     uint8_t u8modulus;
@@ -1574,8 +1583,9 @@ uint32_t calculateRampOutput(void){
     return u32OutputValue;
 }
 
-/*Clock pulses are generated in the sample timer routine. The only thing that's needed to know
- is the number of memory bytes used between steps. Options are 1,2,4,8,16*/
+/*Clock pulses are generated in the sample timer routine. This routine calculates
+ how long to count for clock pulses from the number of bytes used to store the
+ sequence.*/
 uint32_t calculateNextClockPulse(void){
     static uint8_t u8RoundFlag = 0;
     uint32_t u32LengthOfSequence = getActiveSequenceLength();
@@ -1615,8 +1625,8 @@ void calculateClockTimer(uint32_t u32PlaybackSpeed){
     
     /*The clock needs to run at a multiple of the frequency of the
      regular sample clock, but not any faster than necessary. The longest the
-     clock can be is 65535 because it is 16 bit. We start with 16x faster. If that's
-     not fast enough, we increase it to 32x, or 64x.
+     clock can be is 65535 because it is 16 bit. We start with 8x faster. If that's
+     not fast enough, we increase it to, 16x, 32x, or 64x.
      For example: the sample timer is running at 399999 counts per sample.
      The clock timer will run at 8x this speed at 49999 counts per cycle.
      */

@@ -429,6 +429,7 @@ static uint32_t u32ClockTimerTriggerCount;
 static uint8_t u8ClockPulseFlag;
 static uint8_t u8GatePulseFlag;
 static uint8_t u8ClockEnableFlag = TRUE;
+static uint32_t u32RecInputClockCount;
 
 void setClockTimerTriggerCount(uint32_t u32NewTriggerCount){
     u32ClockTimerTriggerCount = u32NewTriggerCount;
@@ -440,6 +441,14 @@ void resetClockTimer(void){
 
 void setClockEnableFlag(uint8_t u8NewState){
     u8ClockEnableFlag = u8NewState;
+}
+
+void resetRecInputClockCount(void){
+    u32RecInputClockCount = 0;
+}
+
+uint32_t getRecInputClockCount(void){
+    return u32RecInputClockCount;
 }
 
 void vTIM3InterruptHandler(void){
@@ -457,6 +466,7 @@ void vTIM3InterruptHandler(void){
             SET_LOOP_SYNC_OUT;
             u8ClockPulseFlag = TRUE;
             u32ClockTimer = 0;
+            u32RecInputClockCount = 0;
             clearResetFlag();
         }
         else{
@@ -466,6 +476,8 @@ void vTIM3InterruptHandler(void){
                 u8ClockPulseFlag = TRUE;
                 u32ClockTimer = 0;
             }
+
+            u32RecInputClockCount++;
         }
     }
 }
