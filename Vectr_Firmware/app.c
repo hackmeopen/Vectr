@@ -471,10 +471,12 @@ void vTIM3InterruptHandler(void){
         }
         else{
              /*If the count has reached the trigger count, it's time for a pulse.*/
-            if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
-                SET_LOOP_SYNC_OUT;
-                u8ClockPulseFlag = TRUE;
-                u32ClockTimer = 0;
+            if(getPlaybackRunStatus() == RUN){
+                if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
+                    SET_LOOP_SYNC_OUT;
+                    u8ClockPulseFlag = TRUE;
+                    u32ClockTimer = 0;
+                }
             }
 
             u32RecInputClockCount++;

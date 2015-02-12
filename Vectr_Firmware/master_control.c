@@ -29,6 +29,15 @@
 //TODO: Implement time quantization
 //TODO: Fix the switch blinking for when the record mode is internal
 //TODO: Implement the hand gate output "being recorded" - Fake the playback.
+/*TODO: The old clock method enabled the clock only once playback started. Now it will run during record
+ * Make sure nothing is screwed up with that.
+ */
+//TODO: Pulse generation during record may be screwed up.
+//TODO: In external recording mode, the clock output should be a pass through? Unless clock division?
+//TODO: Add the clock stopping control to overdubbing.
+//TODO: What to do with the playback when it's synced to record input.
+//TODO: Make it so an encoder switch press when the record clock is stopped resets the loop.
+
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -889,8 +898,7 @@ void MasterControlStateMachine(void){
                         u8PlaybackArmedFlag = NOT_ARMED;
                         /*Clear the trigger and start playback.*/
                         u8PlayTrigger = NO_TRIGGER;
-                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                        u8PlaybackRunFlag = RUN;
+                        setPlaybackRunStatus(RUN);
                     }
                 }else if(p_VectrData->u8PlaybackMode == FLIP){
                     if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
@@ -926,7 +934,7 @@ void MasterControlStateMachine(void){
                     u8PlaybackArmedFlag = NOT_ARMED;
                     /*Clear the trigger and start playback.*/
                     u8PlayTrigger = NO_TRIGGER;
-                    u8PlaybackRunFlag = STOP;
+                    setPlaybackRunStatus(STOP);
                     setSwitchLEDState(SWITCH_LED_OFF);
                 }
             }
@@ -952,7 +960,7 @@ void MasterControlStateMachine(void){
                      * the clock plus some margin, then we stop playback.
                      * 
                      */
-                    if(u8PlaybackRunFlag == TRUE){
+                    if(u8PlaybackRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleRecInputClock();
                         }
@@ -961,7 +969,7 @@ void MasterControlStateMachine(void){
                              * the expected number of ticks between clocks.
                              */
                             if(getRecInputClockCount() > u32ExpectedNumTicksBetweenClocks){
-                                setPlaybackRunStatus(STOP);
+                                setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }
@@ -969,9 +977,11 @@ void MasterControlStateMachine(void){
                         /* If playback is stopped, then we look for a clock edge
                          * to start playback again.
                          */
-                        if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                            handleRecInputClock();
-                            setPlaybackRunStatus(RUN);
+                        if(u8PlaybackRunFlag == PAUSED){
+                            if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                                handleRecInputClock();
+                                setPlaybackRunStatus(RUN);
+                            }
                         }
                     }
                 }
@@ -2441,7 +2451,7 @@ void setLivePlayActivationFlag(void){
 /*Start recording from scratch.*/
 void startNewRecording(void){
 
-    resetSpeed();
+    resetSpeed();//Reset the playback speed to default. Also resets the clock timer, Timer3.
     u8OperatingMode = RECORDING;
     u8RecordRunFlag = TRUE;
     u8PlaybackRunFlag = FALSE;
@@ -2458,10 +2468,13 @@ void startNewRecording(void){
         setSwitchLEDState(SWITCH_LED_RED_BLINKING);
     }
 
-    resetInputClockHandling();
-
-    if(p_VectrData->u8Control[RECORD] == TRIGGER && p_VectrData->u8Source[RECORD] == EXTERNAL){
+    /*In external record mode, the clock must be handled. We start running the clock
+     * because we need to know how long it is between clock edges.*/
+    if(p_VectrData->u8Control[RECORD] != GATE && p_VectrData->u8Source[RECORD] == EXTERNAL){
         u8RecordingArmedFlag = NOT_ARMED;
+        resetInputClockHandling();
+        setClockEnableFlag(TRUE);
+        START_CLOCK_TIMER;
     }
 }
 
@@ -3373,8 +3386,8 @@ uint8_t getPlaybackRunStatus(void){
 void setPlaybackRunStatus(uint8_t u8NewState){
     u8PlaybackRunFlag = u8NewState;
 
-    //Turn the switch LED on or off and start the clock timer or stop it
-    if(u8PlaybackRunFlag == TRUE){
+    //If playback is set to run, start the clock timer
+    if(u8PlaybackRunFlag == RUN){
       //  setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         START_CLOCK_TIMER;
     }

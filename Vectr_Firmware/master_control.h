@@ -108,7 +108,8 @@ enum{
 enum{
     STOP = 0,
     RUN,
-    ENDED
+    ENDED,
+    PAUSED
 };
 
 //Playback modes
