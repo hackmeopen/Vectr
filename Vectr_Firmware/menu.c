@@ -698,7 +698,7 @@ void editRecParameter(uint8_t u8RecPlayOdub){
         case CONTROL:
             u8CurrentParameter = getCurrentControl(u8RecPlayOdub);
             setLEDState(u8BottomParameterMapping[u8CurrentParameter+2], OFF);
-            if(i8MainMenuState != PLAYBACK_MENU){
+            if(i8MainMenuState == OVERDUB_MENU){//Presently there is no TRIGA for overdub.
                u8CurrentParameter ^= 1;
             }
             else{
@@ -774,7 +774,7 @@ void changeRecSubMenuState(void){
     }
 
     if(i8MainMenuState != PLAYBACK_MENU){
-        if(i8SubMenuState > (CONTROL) && i8SubMenuState < CLK_NUMBER){
+        if(i8SubMenuState > CONTROL && i8SubMenuState < CLK_NUMBER){
             if(i8MenuChangeFlag < 0){
                 i8SubMenuState = CONTROL;
             }else{

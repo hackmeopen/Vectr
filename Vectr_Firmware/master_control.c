@@ -10,7 +10,7 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO: Change the record input behavior - Add Auto loop recording
+//TODO: Test TRIGA menu setting and function.
 //TODO: Change the record input - Use the record input to keep synchronized
 //TODO: Add the above behaviors to Overdub as well.
 //TODO: Check the hold behaviors in all modes
@@ -22,11 +22,8 @@
 //TODO: Fix the behavior to go to hold or live playback, simple turns.
 //TODO: Need to be able to count a number of clock ticks between input clock pulses
 //TODO: Make LEDs dim or add screen saver mode when inactive for 5 minutes.
-/*TODO: For externally triggered recording, we need to be able to repeatably restart the loop.
- *      We can do this by using the switch when we're in externally triggered mode.
- * */
 //TODO: Check the switch blinking during SCRATCH mode.
-//TODO: Implement time quantization
+//TODO: Implement time quantization - Make a way to turn it on and off with gestures.
 //TODO: Fix the switch blinking for when the record mode is internal
 //TODO: Implement the hand gate output "being recorded" - Fake the playback.
 /*TODO: The old clock method enabled the clock only once playback started. Now it will run during record
@@ -34,10 +31,16 @@
  */
 //TODO: Pulse generation during record may be screwed up.
 //TODO: In external recording mode, the clock output should be a pass through? Unless clock division?
-//TODO: Add the clock stopping control to overdubbing.
-//TODO: What to do with the playback when it's synced to record input.
-//TODO: Make it so an encoder switch press when the record clock is stopped resets the loop.
+//TODO: Test the clock stopping control in overdubbing.
+//TODO: Test - Make it so an encoder switch press when the record clock is stopped resets the loop.
+//TODO: Add the new clock sync to muting, sequencing, and air scratching modes.
+//TODO: Overdub technically has its own recording settings. WTF to do with that?
+/*In overdub, we need to keep it synchronized, but allow recording to occur as it would with
+ the overdub settings. Is this wacky?*/
+//TODO: Implement automatic speed tracking to playback.
+//TODO: Implement quantized speed changes when record is set to external.
 
+/*Done*/
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -234,8 +237,6 @@ uint8_t handleRecInputClock(void){
         u8CurrentClockArrayIndex = 0;
     }
 
-
-
     /*Blink the switch LED to indicate incoming record clock signals.*/
     if(u8OperatingMode == RECORDING
        || (u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
@@ -245,7 +246,6 @@ uint8_t handleRecInputClock(void){
         }else{
             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         }
-
     }
     else{
         /*This state is for playback.*/
@@ -282,8 +282,10 @@ uint8_t handleRecInputClock(void){
 
 /* Calculate the average number of timer ticks between clock edges. If the recorded sequence
  * is shorter than the array we are using for averaging, then calculate a shorter average.
+ * The function returns a 1 if the average number of clocks changes by an amount significant
+ * enough to warrant a change in the playback speed.
  */
-void calculateAvgNumClicksBetweenClocks(void){
+uint8_t calculateAvgNumClicksBetweenClocks(void){
     int i;
     uint32_t u32Sum = 0;
     uint32_t u32Result = 0;
@@ -304,17 +306,6 @@ void calculateAvgNumClicksBetweenClocks(void){
     u32AvgNumTicksBetweenClocks = u32Result;
     u32ExpectedNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
 }
-
-/* What to do with the playback input with this new synchronization mode?
- * Could I use the record input to keep synchronized and still use the
- * playback input to start and stop? I sure can!
- *
- *
- * TRIGA for record makes automatic length loops in record mode!
- *
- */
-
-
 
 void MasterControlInit(void){
 
@@ -628,8 +619,6 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            
-
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
                 u8HoldActivationFlag = HOLD_ACTIVATE;
                 u8HandHoldFlag =  TRUE;
@@ -666,7 +655,6 @@ void MasterControlStateMachine(void){
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
-
 
             /*Check for triggers...
             * If the mode is trigger, look for a rising edge trigger.
@@ -769,16 +757,22 @@ void MasterControlStateMachine(void){
             }else{
                 //Recording is "NOT_ARMED", meaning it is running. 
                 //If we're in EXTERNAL recording mode, we need to count edges.
-                //
-                if(p_VectrData->u8Control[RECORD] == TRIGGER
-                   && p_VectrData->u8Source[RECORD] == EXTERNAL){
-                    if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                // If we're in regular trigger mode, we just count clocks.
+                //If we in trigger auto mode, then we count clocks and look for the end of the loop.
+                if(p_VectrData->u8Source[RECORD] == EXTERNAL
+                   && (u8RecordTrigger == TRIGGER_WENT_HIGH)){
+                    if(p_VectrData->u8Control[RECORD] == TRIGGER){
                         handleRecInputClock();
+                    }
+                    else if(p_VectrData->u8Control[RECORD] == TRIGGER_AUTO){
+                        if(handleRecInputClock()){
+                            u8RecordingArmedFlag = NOT_ARMED;
+                            finishRecording();
+                        }
                     }
                 }
             }
-
-            
+      
             /*Recording - Keep track of airwheel but don't do anything with it to
              keep jumps from occurring*/
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
@@ -859,8 +853,6 @@ void MasterControlStateMachine(void){
                 }
             }
 
-
-
             /*If we're in gate mode, then a low level stops playback. A high level starts recording.
              */
             //Change to if trigger IS LOW!!!!!!!
@@ -938,7 +930,9 @@ void MasterControlStateMachine(void){
                     setSwitchLEDState(SWITCH_LED_OFF);
                 }
             }
-            
+
+
+
             if(u8RecordingArmedFlag == ARMED){
                 if(u8RecordTrigger == TRIGGER_WENT_HIGH){/*If we received the record trigger.*/
                     u8RecordingArmedFlag = NOT_ARMED;
@@ -974,7 +968,7 @@ void MasterControlStateMachine(void){
                         }
                     }
                     else{
-                        /* If playback is stopped, then we look for a clock edge
+                        /* If playback is paused because the clock stopped, then we look for a clock edge
                          * to start playback again.
                          */
                         if(u8PlaybackRunFlag == PAUSED){
@@ -1219,15 +1213,44 @@ void MasterControlStateMachine(void){
                 }
             }
             else{
-                /*Overdub is running. We need to count clocks to keep sync and
-                 * makes the switch LED blink in time.
-                */
-                if(u8OverdubRunFlag == TRUE
-                    && p_VectrData->u8Control[RECORD] == TRIGGER
+
+                /*If record mode is set to external, we use the record input clock
+                 * to keep the loop synchronized, to adjust to changes in tempo,
+                 * and to start and stop the loop based on the presence or absense of
+                 * the clock.
+                 */
+                if( p_VectrData->u8Control[RECORD] != GATE
                     && p_VectrData->u8Source[RECORD] == EXTERNAL){
+
+                    /* If playback is running, then we are looking for the clock edge.
+                     * If the timer clock has run past the point that we expect
+                     * the clock plus some margin, then we stop playback.
+                     *
+                     */
+                    if(u8OverdubRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleRecInputClock();
                         }
+                        else{
+                            /* Check to see if the trigger is late. There is margin built into
+                             * the expected number of ticks between clocks.
+                             */
+                            if(getRecInputClockCount() > u32ExpectedNumTicksBetweenClocks){
+                                u8OverdubRunFlag = PAUSED;
+                            }
+                        }
+                    }
+                    else{
+                        /* If playback is paused because the clock stopped, then we look for a clock edge
+                         * to start playback again.
+                         */
+                        if(u8OverdubRunFlag == PAUSED){
+                            if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                                handleRecInputClock();
+                                u8OverdubRunFlag = RUN;
+                            }
+                        }
+                    }
                 }
             }
             /*Overdub - Keep track of airwheel data but don't do anything about it*/
@@ -2731,74 +2754,84 @@ void switchStateMachine(void){
                  * PLAY/EXT/TRIGGERAUTO - Arm/disarm playback
                  */
                 if(u8MenuModeFlag == FALSE){
-                    if(p_VectrData->u8Source[PLAY] == SWITCH){
-                        if(p_VectrData->u8PlaybackMode != FLIP &&
-                           p_VectrData->u8PlaybackMode != RETRIGGER){
-                            if(u8PlaybackRunFlag != RUN){
-                                u8HoldActivationFlag = HOLD_DEACTIVATE;
-                                setPlaybackRunStatus(RUN);
-                                u8HoldState = OFF;//Turn off any hold.
-                            }
-                            else{
-                                setPlaybackRunStatus(STOP);
-                            }
-                        }
-                        else if(p_VectrData->u8PlaybackMode == FLIP){//Flip playback mode
-                            if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
-                                setPlaybackDirection(REVERSE_PLAYBACK);
-                            }
-                            else{
-                                setPlaybackDirection(FORWARD_PLAYBACK);
-                            }
-                        }
-                        else{
-                            //This if for one-shot mode and retrigger mode.
-                            if(p_VectrData->u8PlaybackMode == FLIP || u8PlaybackRunFlag == ENDED){
-                                setRAMRetriggerFlag();
-                                //Retrigger playback mode.
-                                setPlaybackRunStatus(RUN);
-                            }
-                            else{//One-shot mode
-                                if(u8PlaybackRunFlag == RUN){
-                                  setPlaybackRunStatus(STOP);
-                                }
-                                else{
-                                   setPlaybackRunStatus(RUN);
-                                }
-                            }
-                            
-                        }
-
-                        if(u8PlaybackRunFlag == RUN){
-                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                        }
-                        else{
-                            setSwitchLEDState(OFF);
-                        }
-                    }else{//external control = arm playback
-                        /*If recording is running, we disarm.
-                         If recording is not running, we arm it.
-                         If the playback mode is flip, then we only arm playback
-                         to cause the direction to flip with the next trigger.*/
-                        if(p_VectrData->u8PlaybackMode != FLIP){
-                            if(p_VectrData->u8Control[PLAY] != GATE){
+                    /* If playback is paused because the clock disappeared in externally controlled recording
+                     * then pressing the switch will cause the loop to start over from the beginning.
+                     * This is a way to keep loops and other things synchronized.
+                     */
+                    if(u8PlaybackRunFlag == PAUSED){
+                        //Restart the loop.
+                        setRAMRetriggerFlag();
+                    }else{
+                        if(p_VectrData->u8Source[PLAY] == SWITCH){
+                            if(p_VectrData->u8PlaybackMode != FLIP &&
+                               p_VectrData->u8PlaybackMode != RETRIGGER){
                                 if(u8PlaybackRunFlag != RUN){
-                                    armPlayback();
+                                    u8HoldActivationFlag = HOLD_DEACTIVATE;
+                                    setPlaybackRunStatus(RUN);
+                                    u8HoldState = OFF;//Turn off any hold.
                                 }
                                 else{
-                                    disarmPlayback();
+                                    setPlaybackRunStatus(STOP);
+                                }
+                            }
+                            else if(p_VectrData->u8PlaybackMode == FLIP){//Flip playback mode
+                                if(p_VectrData->u8PlaybackDirection == FORWARD_PLAYBACK){
+                                    setPlaybackDirection(REVERSE_PLAYBACK);
+                                }
+                                else{
+                                    setPlaybackDirection(FORWARD_PLAYBACK);
+                                }
+                            }
+                            else{
+                                //This if for one-shot mode and retrigger mode.
+                                if(p_VectrData->u8PlaybackMode == FLIP || u8PlaybackRunFlag == ENDED){
+                                    setRAMRetriggerFlag();
+                                    //Retrigger playback mode.
+                                    setPlaybackRunStatus(RUN);
+                                }
+                                else{//One-shot mode
+                                    if(u8PlaybackRunFlag == RUN){
+                                      setPlaybackRunStatus(STOP);
+                                    }
+                                    else{
+                                       setPlaybackRunStatus(RUN);
+                                    }
+                                }
+
+                            }
+
+                            if(u8PlaybackRunFlag == RUN){
+                                setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                            }
+                            else{
+                                setSwitchLEDState(OFF);
+                            }
+
+                        }else{//external control = arm playback
+                            /*If recording is running, we disarm.
+                             If recording is not running, we arm it.
+                             If the playback mode is flip, then we only arm playback
+                             to cause the direction to flip with the next trigger.*/
+                            if(p_VectrData->u8PlaybackMode != FLIP){
+                                if(p_VectrData->u8Control[PLAY] != GATE){
+                                    if(u8PlaybackRunFlag != RUN){
+                                        armPlayback();
+                                    }
+                                    else{
+                                        disarmPlayback();
+                                    }
+                                }else{
+                                    if(u8PlaybackArmedFlag == DISARMED){
+                                       u8PlaybackArmedFlag = ARMED;
+                                    }else{
+                                       u8PlaybackArmedFlag = DISARMED;
+                                    }
                                 }
                             }else{
-                                if(u8PlaybackArmedFlag == DISARMED){
-                                   u8PlaybackArmedFlag = ARMED;
-                                }else{
-                                   u8PlaybackArmedFlag = DISARMED;
-                                }
+                                armPlayback();
                             }
-                        }else{
-                            armPlayback();
-                        }
 
+                        }
                     }
                 }else{
                     setMenuKeyPressFlag();
@@ -2840,14 +2873,20 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://OVERDUBBING
                 //Encoder switch press during overdub can start and stop playback
-                u8OverdubRunFlag ^= TRUE;
+                if(u8OverdubRunFlag != PAUSED){
+                    u8OverdubRunFlag ^= RUN;
 
-                if(u8OverdubRunFlag == TRUE){
-                    u8HoldState = OFF;//Turn off any hold
-                    setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                    if(u8OverdubRunFlag == RUN){
+                        u8HoldState = OFF;//Turn off any hold
+                        setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                    }
+                    else{
+                        setSwitchLEDState(OFF);
+                    }
                 }
                 else{
-                    setSwitchLEDState(OFF);
+                    /*An encoder press will restart the */
+                    setRAMRetriggerFlag();
                 }
                 break;
             case MAIN_SWITCH_PRESSED://OVERDUBBING
@@ -2900,29 +2939,34 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://SEQUENCING
                 if(u8MenuModeFlag == FALSE){
-                    if(p_VectrData->u8Source[PLAY] == SWITCH){
-                        if(u8PlaybackRunFlag != RUN){
-                            u8HoldState = OFF;
-                            u8PlaybackRunFlag = RUN;
-                        }
-                        else{
-                            u8PlaybackRunFlag = STOP;
-                        }
+                    if(u8PlaybackRunFlag == PAUSED){
+                        //Restart the loop.
+                        setRAMRetriggerFlag();
+                    }else{
+                        if(p_VectrData->u8Source[PLAY] == SWITCH){
+                            if(u8PlaybackRunFlag != RUN){
+                                u8HoldState = OFF;
+                                u8PlaybackRunFlag = RUN;
+                            }
+                            else{
+                                u8PlaybackRunFlag = STOP;
+                            }
 
-                        if(u8PlaybackRunFlag == RUN){
-                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                        }
-                        else{
-                            setSwitchLEDState(OFF);
-                        }
-                    }else{//external control = arm playback
-                        /*If recording is running, we disarm.
-                         If recording is not running, we arm it.*/
-                        if(u8PlaybackRunFlag == RUN){
-                            disarmPlayback();
-                        }
-                        else{
-                            armPlayback();
+                            if(u8PlaybackRunFlag == RUN){
+                                setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                            }
+                            else{
+                                setSwitchLEDState(OFF);
+                            }
+                        }else{//external control = arm playback
+                            /*If recording is running, we disarm.
+                             If recording is not running, we arm it.*/
+                            if(u8PlaybackRunFlag == RUN){
+                                disarmPlayback();
+                            }
+                            else{
+                                armPlayback();
+                            }
                         }
                     }
                 }else{
@@ -2944,29 +2988,34 @@ void switchStateMachine(void){
             switch(u8NewSwitchState){
             case ENC_SWITCH_PRESSED://SEQUENCING
                 if(u8MenuModeFlag == FALSE){
-                    if(p_VectrData->u8Source[PLAY] == SWITCH){
-                        if(u8PlaybackRunFlag != RUN){
-                            u8HoldState = OFF;
-                            u8PlaybackRunFlag = RUN;
-                        }
-                        else{
-                            u8PlaybackRunFlag = STOP;
-                        }
+                    if(u8PlaybackRunFlag == PAUSED){
+                        //Restart the loop.
+                        setRAMRetriggerFlag();
+                    }else{
+                        if(p_VectrData->u8Source[PLAY] == SWITCH){
+                            if(u8PlaybackRunFlag != RUN){
+                                u8HoldState = OFF;
+                                u8PlaybackRunFlag = RUN;
+                            }
+                            else{
+                                u8PlaybackRunFlag = STOP;
+                            }
 
-                        if(u8PlaybackRunFlag == RUN){
-                            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                        }
-                        else{
-                            setSwitchLEDState(OFF);
-                        }
-                    }else{//external control = arm playback
-                        /*If recording is running, we disarm.
-                         If recording is not running, we arm it.*/
-                        if(u8PlaybackRunFlag == RUN){
-                            disarmPlayback();
-                        }
-                        else{
-                            armPlayback();
+                            if(u8PlaybackRunFlag == RUN){
+                                setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+                            }
+                            else{
+                                setSwitchLEDState(OFF);
+                            }
+                        }else{//external control = arm playback
+                            /*If recording is running, we disarm.
+                             If recording is not running, we arm it.*/
+                            if(u8PlaybackRunFlag == RUN){
+                                disarmPlayback();
+                            }
+                            else{
+                                armPlayback();
+                            }
                         }
                     }
                 }else{
