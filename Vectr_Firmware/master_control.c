@@ -10,18 +10,16 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO: Test TRIGA menu setting and function.
-//TODO: Change the record input - Use the record input to keep synchronized
-//TODO: Add the above behaviors to Overdub as well.
-//TODO: Check the hold behaviors in all modes
-//TODO: Test overdubbing behavior
-//TODO: Make the LED blinking indicate sequencing events - clock pulses.
 //TODO: Figure out what it takes to update the MGC3130 library
 //TODO: Specify a solution for microchip demos
-//TODO: Fix going to live mode when playback is stopped.
-//TODO: Fix the behavior to go to hold or live playback, simple turns.
-//TODO: Need to be able to count a number of clock ticks between input clock pulses
 //TODO: Make LEDs dim or add screen saver mode when inactive for 5 minutes.
+
+//TODO: Test - TRIGA menu setting and function.
+//TODO: Test - Change the record input - Use the record input to keep synchronized
+//TODO: Test - Add the above behaviors to Overdub as well.
+//TODO: Check the hold behaviors in all modes
+//TODO: Test - Make the LED blinking indicate sequencing events - clock pulses.
+//TODO: Fix the behavior to go to hold or live playback, simple turns.
 //TODO: Check the switch blinking during SCRATCH mode.
 //TODO: Implement time quantization - Make a way to turn it on and off with gestures.
 //TODO: Fix the switch blinking for when the record mode is internal
@@ -31,17 +29,11 @@
  */
 //TODO: Pulse generation during record may be screwed up.
 //TODO: In external recording mode, the clock output should be a pass through? Unless clock division?
-//TODO: Test the clock stopping control in overdubbing.
+//TODO: Test - the clock stopping control in overdubbing.
 //TODO: Test - Make it so an encoder switch press when the record clock is stopped resets the loop.
 //TODO: Add the new clock sync to muting, sequencing, and air scratching modes.
-//TODO: Overdub technically has its own recording settings. WTF to do with that?
-/*In overdub, we need to keep it synchronized, but allow recording to occur as it would with
- the overdub settings. Is this wacky?*/
 //TODO: Implement automatic speed tracking to playback.
 //TODO: Implement quantized speed changes when record is set to external.
-
-/*Done*/
-
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -56,7 +48,6 @@
 #define CENTER_TOUCH    MGC3130_TOUCH_CENTER
 
 #define GESTURE_DEBOUNCE_TIMER_RESET    50
-
 
 static VectrDataStruct VectrData;
 static VectrDataStruct * p_VectrData;
@@ -113,11 +104,11 @@ static uint16_t u16CurrentScratchSpeedIndex;
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
 #define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
-#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  16
+#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  32
 
 static uint8_t u8CurrentInputClockCount;
 static uint8_t u8ClockLengthOfRecordedSequence;
-static uint32_t u32NumTicksBetweenClocks;//The length of time expected between clock pulses
+static uint32_t u32TargetNumTicksBetweenClocks;//The length of time expected between clock pulses
 static uint32_t u32NumTicksSinceLastClock;
 static uint32_t u32NumTicksBetweenClocksArray[LENGTH_OF_INPUT_CLOCK_ARRAY];
 static uint32_t u32AvgNumTicksBetweenClocks;
@@ -187,13 +178,14 @@ void enterAirScratchMode(void);
 uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
 void resetInputClockHandling(void);
 uint8_t handleRecInputClock(void);
+uint32_t calculateAvgNumClicksBetweenClocks(void);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
     int i;
 
     u8CurrentInputClockCount = 0;
-    u32NumTicksBetweenClocks = 0;//The length of time expected between clock pulses
+    u32TargetNumTicksBetweenClocks = 0;
     u32NumTicksSinceLastClock = 0;
     u32AvgNumTicksBetweenClocks = 0;
     u8CurrentClockArrayIndex = 0;
@@ -285,7 +277,7 @@ uint8_t handleRecInputClock(void){
  * The function returns a 1 if the average number of clocks changes by an amount significant
  * enough to warrant a change in the playback speed.
  */
-uint8_t calculateAvgNumClicksBetweenClocks(void){
+uint32_t calculateAvgNumClicksBetweenClocks(void){
     int i;
     uint32_t u32Sum = 0;
     uint32_t u32Result = 0;
@@ -305,6 +297,41 @@ uint8_t calculateAvgNumClicksBetweenClocks(void){
 
     u32AvgNumTicksBetweenClocks = u32Result;
     u32ExpectedNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
+
+    return u32AvgNumTicksBetweenClocks;
+}
+
+/* When the record input is being used to synchronize playback,
+ * this function will speed up and slow down the playback clock to keep
+ * the number of ticks between clock edges constant.
+ */
+void regulateClockPlaybackSpeed(void){
+    int16_t i16Temp;
+    uint8_t u8Change = 0;
+
+    /*If the number of clock ticks between edges changes, then we need to speed up or slow
+     * down the playback clock to keep the playback speed constant.
+     */
+    if(u32AvgNumTicksBetweenClocks > u32TargetNumTicksBetweenClocks){
+        i16Temp = u16PlaybackSpeedTableIndex - 8;
+        u8Change = 1;
+    }
+    else if(u32AvgNumTicksBetweenClocks < u32TargetNumTicksBetweenClocks){
+        i16Temp = u16PlaybackSpeedTableIndex + 8;
+        u8Change = 1;
+    }
+
+    if(u8Change){
+        if(i16Temp > MINIMUM_SPEED_INDEX && i16Temp < MAXIMUM_SPEED_INDEX){
+            u16PlaybackSpeedTableIndex = i16Temp;
+            u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
+            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            RESET_SAMPLE_TIMER;
+
+            /*Adjust the clock timer accordingly.*/
+            calculateClockTimer(u32PlaybackSpeed);
+        }
+    }
 }
 
 void MasterControlInit(void){
@@ -957,6 +984,7 @@ void MasterControlStateMachine(void){
                     if(u8PlaybackRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleRecInputClock();
+                            regulateClockPlaybackSpeed();//Keep playback speed running.
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
@@ -2510,9 +2538,9 @@ void finishRecording(void){
     calculateClockTimer(u32PlaybackSpeed);
     setPlaybackDirection(FORWARD_PLAYBACK);
     u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
+    u32TargetNumTicksBetweenClocks = calculateAvgNumClicksBetweenClocks();//Needed to change playback speed.
     u8CurrentInputClockCount = 0;
-    calculateAvgNumClicksBetweenClocks();
-                    
+                 
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.
         resetRAMReadAddress();
