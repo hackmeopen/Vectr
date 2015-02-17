@@ -64,6 +64,7 @@ void SYS_Tasks ( void );
 void setClockTimerTriggerCount(uint32_t u32NewTriggerCount);
 void resetClockTimer(void);
 void setClockEnableFlag(uint8_t u8NewState);
+void setClockPulseFlag(void);
 
 #define FALSE   0
 #define TRUE    1

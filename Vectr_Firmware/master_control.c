@@ -17,23 +17,24 @@
 //TODO: Test - TRIGA menu setting and function.
 //TODO: Test - Change the record input - Use the record input to keep synchronized
 //TODO: Test - Add the above behaviors to Overdub as well.
-//TODO: Check the hold behaviors in all modes
+//TODO: Test pass through clock.
+//TODO: Test hold behaviors in all modes
 //TODO: Test - Make the LED blinking indicate sequencing events - clock pulses.
+//TODO: Test - the clock stopping control in overdubbing.
+//TODO: Test - Make it so an encoder switch press when the record clock is stopped resets the loop.
+
 //TODO: Fix the behavior to go to hold or live playback, simple turns.
 //TODO: Check the switch blinking during SCRATCH mode.
 //TODO: Implement time quantization - Make a way to turn it on and off with gestures.
 //TODO: Fix the switch blinking for when the record mode is internal
 //TODO: Implement the hand gate output "being recorded" - Fake the playback.
-/*TODO: The old clock method enabled the clock only once playback started. Now it will run during record
- * Make sure nothing is screwed up with that.
- */
-//TODO: Pulse generation during record may be screwed up.
-//TODO: In external recording mode, the clock output should be a pass through? Unless clock division?
-//TODO: Test - the clock stopping control in overdubbing.
-//TODO: Test - Make it so an encoder switch press when the record clock is stopped resets the loop.
 //TODO: Add the new clock sync to muting, sequencing, and air scratching modes.
 //TODO: Implement automatic speed tracking to playback.
 //TODO: Implement quantized speed changes when record is set to external.
+//TODO: Make sure playback is smooth. There may be some sort of jumps.
+//TODO: Make playback start back at the beginning when playback is restarted from live play mode.
+//TODO: Second press during TRIGA external recording should be disregarded.
+//TODO: Make sure we're not counting clocks during hold in external recording mode.
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -228,6 +229,10 @@ uint8_t handleRecInputClock(void){
     if(u8CurrentClockArrayIndex > LENGTH_OF_INPUT_CLOCK_ARRAY){
         u8CurrentClockArrayIndex = 0;
     }
+    
+    //With external recording, the clock output mirrors the clock input
+    SET_LOOP_SYNC_OUT;
+    setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
 
     /*Blink the switch LED to indicate incoming record clock signals.*/
     if(u8OperatingMode == RECORDING
@@ -245,6 +250,8 @@ uint8_t handleRecInputClock(void){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         }else{
             setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+            //Reset to the loop to be certain that it's staying sync'ed
+            setRAMRetriggerFlag();
         }
 
         /* Calculate the running average of time between clocks.
@@ -1577,10 +1584,9 @@ void runPlaybackMode(void){
         else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
             START_CLOCK_TIMER;
             u8HoldState = OFF;
-        }
-        else 
+        } 
 
-       if(u16ModulationOnFlag == TRUE){
+        if(u16ModulationOnFlag == TRUE){
             runModulation(p_mem_pos_and_gesture_struct);
         }
 
@@ -2747,7 +2753,9 @@ void switchStateMachine(void){
                                 armRecording();
                             }
                             else{
-                                disarmRecording();
+                                if(p_VectrData->u8Control[RECORD] != TRIGGER_AUTO){
+                                    disarmRecording();
+                                }
                             }
                         }
                     }
@@ -3549,10 +3557,6 @@ uint8_t getCurrentSequenceIndex(void){
 
 void setNumberOfClockPulses(void){
     u8NumOfClockPulses = 1 << p_VectrData->u8ClockMode;
-}
-
-void setClockPulseFlag(void){
-    u8ClockPulseFlag = TRUE;
 }
 
 uint32_t getNextClockPulseIndex(void){

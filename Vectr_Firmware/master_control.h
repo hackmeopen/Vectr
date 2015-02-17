@@ -319,7 +319,6 @@ uint32_t getNextClockPulseIndex(void);
 uint8_t getGatePulseFlag(void);
 void setGatePulseFlag(uint8_t u8NewState);
 VectrDataStruct * getVectrDataStart(void);
-void setClockPulseFlag(void);
 void clearNextClockPulseIndex(void);
 uint32_t calculateNextClockPulse(void);
 uint8_t getCurrentGateMode(void);

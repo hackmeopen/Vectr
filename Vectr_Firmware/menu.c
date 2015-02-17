@@ -388,6 +388,8 @@ void MenuStateMachine(void){
     }
 }
 
+#define DEBOUNCE_TIMER_RESET    25
+
 /*The encoder can be used when not in menu mode to return to live play from
  * another mode by turning two clicks to the right. A hold command can be toggled
  * by turning the encoder two clicks to the left. The first turn to the left will
@@ -395,25 +397,36 @@ void MenuStateMachine(void){
  */
 void encoderLiveInteraction(void){
     io_event_message event_message;
+    static uint8_t u8debounceTimer = 0;
 
-    if(i16EncoderState >= i16EncoderLiveZeroPosition+LIVE_PLAY_ACTIVATION_CLICKS){
-        setLivePlayActivationFlag();
-        i16EncoderLiveZeroPosition = i16EncoderState;
-        setClockEnableFlag(FALSE);
+    if(u8debounceTimer > 0){
+        u8debounceTimer--;
     }
-    else if(i16EncoderState <= i16EncoderLiveZeroPosition-HOLD_ACTIVATION_CLICKS){
-        
-        if(getHoldState() == OFF){
-            event_message.u16messageType = HOLD_IN_EVENT;
-            event_message.u16message = TRIGGER_WENT_HIGH;
-            xQueueSend(xIOEventQueue, &event_message, 0);
+    
+    if(u8debounceTimer == 0){
+        if(i16EncoderState >= i16EncoderLiveZeroPosition+LIVE_PLAY_ACTIVATION_CLICKS){
+            setLivePlayActivationFlag();
+            i16EncoderLiveZeroPosition = i16EncoderState;
+            setClockEnableFlag(FALSE);
+            u8debounceTimer = DEBOUNCE_TIMER_RESET;
         }
-        else{
-            event_message.u16messageType = HOLD_IN_EVENT;
-            event_message.u16message = TRIGGER_WENT_LOW;
-            xQueueSend(xIOEventQueue, &event_message, 0);
+        else if(i16EncoderState <= i16EncoderLiveZeroPosition-HOLD_ACTIVATION_CLICKS){
+
+            if(getHoldState() == OFF){
+                event_message.u16messageType = HOLD_IN_EVENT;
+                event_message.u16message = TRIGGER_WENT_HIGH;
+                xQueueSend(xIOEventQueue, &event_message, 0);
+            }
+            else{
+                event_message.u16messageType = HOLD_IN_EVENT;
+                event_message.u16message = TRIGGER_WENT_LOW;
+                xQueueSend(xIOEventQueue, &event_message, 0);
+            }
+            i16EncoderLiveZeroPosition = i16EncoderState;
+            u8debounceTimer = DEBOUNCE_TIMER_RESET;
         }
-        i16EncoderLiveZeroPosition = i16EncoderState;
+    }else{
+       i16EncoderLiveZeroPosition = i16EncoderState;
     }
     
 }

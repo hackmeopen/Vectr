@@ -431,6 +431,10 @@ static uint8_t u8GatePulseFlag;
 static uint8_t u8ClockEnableFlag = TRUE;
 static uint32_t u32RecInputClockCount;
 
+void setClockPulseFlag(void){
+    u8ClockPulseFlag = TRUE;
+}
+
 void setClockTimerTriggerCount(uint32_t u32NewTriggerCount){
     u32ClockTimerTriggerCount = u32NewTriggerCount;
 }
@@ -473,8 +477,14 @@ void vTIM3InterruptHandler(void){
              /*If the count has reached the trigger count, it's time for a pulse.*/
             if(getPlaybackRunStatus() == RUN){
                 if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
-                    SET_LOOP_SYNC_OUT;
-                    u8ClockPulseFlag = TRUE;
+                    /*If record is sync'ed to external then clock pulses are
+                     * duplicated from the record input.
+                     */
+                    if(getCurrentSource(RECORD) != EXTERNAL &&
+                        getCurrentControl(RECORD) != GATE){
+                        SET_LOOP_SYNC_OUT;
+                        u8ClockPulseFlag = TRUE;
+                    }
                     u32ClockTimer = 0;
                 }
             }
