@@ -429,7 +429,7 @@ static uint32_t u32ClockTimerTriggerCount;
 static uint8_t u8ClockPulseFlag;
 static uint8_t u8GatePulseFlag;
 static uint8_t u8ClockEnableFlag = TRUE;
-static uint32_t u32RecInputClockCount;
+static uint32_t u32RecClockCount;
 
 void setClockPulseFlag(void){
     u8ClockPulseFlag = TRUE;
@@ -447,12 +447,12 @@ void setClockEnableFlag(uint8_t u8NewState){
     u8ClockEnableFlag = u8NewState;
 }
 
-void resetRecInputClockCount(void){
-    u32RecInputClockCount = 0;
+void resetRecClockCount(void){
+    u32RecClockCount = 0;
 }
 
-uint32_t getRecInputClockCount(void){
-    return u32RecInputClockCount;
+uint32_t getRecClockCount(void){
+    return u32RecClockCount;
 }
 
 void vTIM3InterruptHandler(void){
@@ -470,11 +470,15 @@ void vTIM3InterruptHandler(void){
             SET_LOOP_SYNC_OUT;
             u8ClockPulseFlag = TRUE;
             u32ClockTimer = 0;
-            u32RecInputClockCount = 0;
+            u32RecClockCount = 0;
             clearResetFlag();
+            if(getCurrentSource(RECORD) != SWITCH){
+                //If the switch is
+            }
         }
         else{
              /*If the count has reached the trigger count, it's time for a pulse.*/
+            //Or if we're in live play mode and tap tempo has been activated.
             if(getPlaybackRunStatus() == RUN){
                 if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
                     /*If record is sync'ed to external then clock pulses are
@@ -489,7 +493,7 @@ void vTIM3InterruptHandler(void){
                 }
             }
 
-            u32RecInputClockCount++;
+            u32RecClockCount++;
         }
     }
 }

@@ -22,19 +22,22 @@
 //TODO: Test - Make the LED blinking indicate sequencing events - clock pulses.
 //TODO: Test - the clock stopping control in overdubbing.
 //TODO: Test - Make it so an encoder switch press when the record clock is stopped resets the loop.
+//TODO: Test - Fix the behavior to go to hold or live playback, simple turns.
+//TODO: Test - what happens when multiple switch presses are made during external sync'ed recording
+//TODO: Test - switch blinking and synchronization during SCRATCH mode.
+//TODO: Test - Implement automatic speed tracking to playback.
+//TODO: Test - Make sure playback is smooth. There may be some sort of jumps.
+//TODO: Test - Second press during TRIGA external recording should be disregarded.
 
-//TODO: Fix the behavior to go to hold or live playback, simple turns.
-//TODO: Check the switch blinking during SCRATCH mode.
-//TODO: Implement time quantization - Make a way to turn it on and off with gestures.
 //TODO: Fix the switch blinking for when the record mode is internal
 //TODO: Implement the hand gate output "being recorded" - Fake the playback.
+//TODO: Implement time quantization - Make a way to turn it on and off with gestures.
 //TODO: Add the new clock sync to muting, sequencing, and air scratching modes.
-//TODO: Implement automatic speed tracking to playback.
 //TODO: Implement quantized speed changes when record is set to external.
-//TODO: Make sure playback is smooth. There may be some sort of jumps.
 //TODO: Make playback start back at the beginning when playback is restarted from live play mode.
-//TODO: Second press during TRIGA external recording should be disregarded.
 //TODO: Make sure we're not counting clocks during hold in external recording mode.
+//TODO: Make Z output decay to zero when the hand is taken away.
+
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -102,6 +105,15 @@ static uint32_t u32NextClockPulseIndex;
 
 static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
+
+static uint8_t u8TapTempoModeActiveFlag;
+static uint8_t u8TapTempoTriggerTimer;
+#define TAP_TEMPO_TIMER_RESET   20
+static uint8_t u8TapTempoKeyPressFlag;
+#define LENGTH_OF_TAP_TEMPO_ARRAY   4
+static uint32_t u32TapTempoArray[LENGTH_OF_TAP_TEMPO_ARRAY];
+static uint8_t u8TapTempoArrayIndex;
+static uint8_t u8CompleteTapTempoArray;
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
 #define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
@@ -223,8 +235,8 @@ uint8_t handleRecInputClock(void){
      * speed to suit the change in tempo.
      * 2. We also want to start and stop the playback based on whether or not the
      */
-    u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getRecInputClockCount();
-    resetRecInputClockCount();
+    u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getRecClockCount();
+    resetRecClockCount();
     u8CurrentClockArrayIndex++;
     if(u8CurrentClockArrayIndex > LENGTH_OF_INPUT_CLOCK_ARRAY){
         u8CurrentClockArrayIndex = 0;
@@ -277,6 +289,87 @@ uint8_t handleRecInputClock(void){
     else{
         return 0;
     }
+}
+
+void resetTapTempoMode(void){
+    int i;
+
+    u8TapTempoArrayIndex = 0;
+    u8CompleteTapTempoArray = FALSE;
+    for(i=0; i < LENGTH_OF_TAP_TEMPO_ARRAY; i++ ){
+        u32TapTempoArray[i] = 0;
+    }
+}
+
+void runTapTempo(void){
+    int i;
+
+    /* If the switch has been pressed, log the time between steps.
+     * If it's the first press, then start the record timer.
+     */
+    if(u8TapTempoKeyPressFlag == TRUE){
+        if(u8CompleteTapTempoArray == FALSE){
+            //This is the first time through.
+            if(u8TapTempoArrayIndex == 0){
+                setClockEnableFlag(TRUE);
+                resetRecClockCount();
+                resetClockTimer();
+            }else{
+                u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
+                u8TapTempoArrayIndex++;
+                if(u8TapTempoArrayIndex == LENGTH_OF_TAP_TEMPO_ARRAY - 1){
+                    u8CompleteTapTempoArray = TRUE;
+                    u8TapTempoArrayIndex = 0;
+                    setClockTimerTriggerCount(calculateTapTempo());
+                    resetClockTimer();
+                    SET_LOOP_SYNC_OUT;
+                    setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+                }
+            }
+        }
+        else{
+            //We have a complete array.
+            u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
+            u8TapTempoArrayIndex++;
+            setClockTimerTriggerCount(calculateTapTempo());
+            resetClockTimer();
+            SET_LOOP_SYNC_OUT;
+            setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+        }
+    }
+}
+
+uint32_t calculateTapTempo(void){
+    int i;
+    uint32_t u32Result = 0;
+    for(i=0; i < LENGTH_OF_TAP_TEMPO_ARRAY; i++ ){
+        u32Result += u32TapTempoArray[i];
+    }
+
+    u32Result /= LENGTH_OF_TAP_TEMPO_ARRAY-1;
+    return u32Result;
+}
+
+/* This function deals with clocking when record is sync'ed internally.
+ * It needs to simulate the behavior of being externally clocked but the source
+ * is internal.
+ *
+ * INTERNAL RECORDING WITH NO CLOCK, SWITCH LED DOESN'T BLINK.
+ *
+ * To enter tap tempo mode, touch the right electrode and center at the same time for three seconds?
+ * To enter tap tempo mode, tap right then left within quick succession.
+ * The switch should blink red once. Then tap three or more times to get the tempo going.
+ * Release the touch on the surface to end tap tempo mode.
+ *
+ * Things with this internal clock.
+ * 1. Ordinarily, the internal clock is set because of the length of the recording
+ *    and the number of clocks selected. Now, we're talking about having the clock
+ *    have a tap tempo.
+ *
+ *
+ */
+uint8_t handleRecOutputClock(void){
+
 }
 
 /* Calculate the average number of timer ticks between clock edges. If the recorded sequence
@@ -361,6 +454,15 @@ void MasterControlInit(void){
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
 }
 
+
+/*  Implementing the internally regulated clock + getting the LED blinking during internally sync'ed recording.
+ *  Set up a default clock rate of 120BPM
+ *  This will get the clock flashing during record. It will change speeds in playback.
+ *
+ * Set up tap tempo
+ *
+ */
+
 void MasterControlStateMachine(void){
     
     uint8_t u8MessageReceivedFlag = FALSE;
@@ -375,7 +477,9 @@ void MasterControlStateMachine(void){
     uint8_t u8PlayTrigger = NO_TRIGGER;
     uint8_t u8RecordTrigger = NO_TRIGGER;
     uint8_t u8HoldTrigger = NO_TRIGGER;
-    
+
+
+
     u8SyncTrigger = NO_TRIGGER;
     u8HoldActivationFlag = NO_HOLD_EVENT;
     
@@ -498,6 +602,28 @@ void MasterControlStateMachine(void){
                             break;
                     }
                 }
+                else{
+                    /*Check for entering tap tempo mode
+                     * 1. Tap on the right electrode.
+                     * 2. Tap on the left electrode within 100ms.
+                     */
+                    if(u16TouchData == MGC3130_TAP_RIGHT){
+                        //Start the timer to look for the left tap.
+                        u8TapTempoTriggerTimer = TAP_TEMPO_TIMER_RESET;
+                    }
+                    else if(u16TouchData == MGC3130_TAP_LEFT){
+                        if(u8TapTempoTriggerTimer > 0){
+                            if(u8TapTempoModeActiveFlag == FALSE){
+                                u8TapTempoModeActiveFlag = TRUE;
+                                //Flash the Red LED once.
+                                setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+                            }
+                            else{
+                                u8TapTempoModeActiveFlag = FALSE;
+                            }
+                        }
+                    }
+                }
             }
             else{
                 pos_and_gesture_struct.u16XPosition = p_VectrData->u16CurrentXPosition;
@@ -552,6 +678,11 @@ void MasterControlStateMachine(void){
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
+
+            /*If tap tempo is actively being set, run the mode*/
+            if(u8TapTempoModeActiveFlag == TRUE){
+                runTapTempo();
+            }
 
             /*Check for armed playback or recording and the appropriate trigger.*/
             if(u8PlaybackArmedFlag == ARMED){
@@ -801,6 +932,7 @@ void MasterControlStateMachine(void){
                     else if(p_VectrData->u8Control[RECORD] == TRIGGER_AUTO){
                         if(handleRecInputClock()){
                             u8RecordingArmedFlag = NOT_ARMED;
+                            u8RecordTrigger = NO_TRIGGER;
                             finishRecording();
                         }
                     }
@@ -997,7 +1129,7 @@ void MasterControlStateMachine(void){
                             /* Check to see if the trigger is late. There is margin built into
                              * the expected number of ticks between clocks.
                              */
-                            if(getRecInputClockCount() > u32ExpectedNumTicksBetweenClocks){
+                            if(getRecClockCount() > u32ExpectedNumTicksBetweenClocks){
                                 setPlaybackRunStatus(PAUSED);
                             }
                         }
@@ -1270,7 +1402,7 @@ void MasterControlStateMachine(void){
                             /* Check to see if the trigger is late. There is margin built into
                              * the expected number of ticks between clocks.
                              */
-                            if(getRecInputClockCount() > u32ExpectedNumTicksBetweenClocks){
+                            if(getRecClockCount() > u32ExpectedNumTicksBetweenClocks){
                                 u8OverdubRunFlag = PAUSED;
                             }
                         }
@@ -2533,6 +2665,14 @@ void startNewRecording(void){
         setClockEnableFlag(TRUE);
         START_CLOCK_TIMER;
     }
+    else{
+        /*Internal recording mode.
+         * If a tempo has been set with tap tempo, then set up to count clock edges
+         * and activate the clock output.
+         * If tap tempo has not been set, then a basic tempo is set just to flash the
+         * switch LED.
+         */
+    }
 }
 
 /*End a recording. If automatic play triggering is enabled, go to playback.*/
@@ -2669,13 +2809,18 @@ void switchStateMachine(void){
                 break;
             case MAIN_SWITCH_PRESSED://LIVE PLAY
                //If we're in menu mode, main switch is exit.
-               if(u8MenuModeFlag == FALSE){
-                   if(p_VectrData->u8Source[RECORD] == SWITCH){
-                       u8OperatingMode = RECORDING;
-                       startNewRecording();
-                   }else{
-                       //Go to record mode and wait for the trigger?
-                       armRecording();
+               if(u8MenuModeFlag == FALSE && u8TapTempoModeActiveFlag == FALSE){
+                   if(u8TapTempoModeActiveFlag == FALSE){
+                       if(p_VectrData->u8Source[RECORD] == SWITCH){
+                           u8OperatingMode = RECORDING;
+                           startNewRecording();
+                       }else{
+                           //Go to record mode and wait for the trigger?
+                           armRecording();
+                       }
+                   }
+                   else{
+                       u8TapTempoKeyPressFlag = TRUE;
                    }
                }
                else{
