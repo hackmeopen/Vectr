@@ -113,7 +113,10 @@ static uint8_t u8TapTempoKeyPressFlag;
 #define LENGTH_OF_TAP_TEMPO_ARRAY   4
 static uint32_t u32TapTempoArray[LENGTH_OF_TAP_TEMPO_ARRAY];
 static uint8_t u8TapTempoArrayIndex;
-static uint8_t u8CompleteTapTempoArray;
+static uint8_t u8TapTempoSetFlag;
+static uint8_t u8InitTapTempoFlag;
+static uint8_t u8ClockTriggerFlag;//Set by the Timer clock routine in app.c TIM3 to inform that the clock expired.
+
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
 #define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
@@ -190,8 +193,11 @@ void calculateClockTimer(uint32_t u32PlaybackSpeed);
 void enterAirScratchMode(void);
 uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
 void resetInputClockHandling(void);
-uint8_t handleRecInputClock(void);
+uint8_t handleClock(void);
 uint32_t calculateAvgNumClicksBetweenClocks(void);
+void resetTapTempoMode(void);
+void runTapTempo(void);
+uint32_t calculateTapTempo(void);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -223,7 +229,7 @@ void resetInputClockHandling(void){
  * pulses. From this, we can tell when the clock has stopped and when the clock
  * has changed speed.
 */
-uint8_t handleRecInputClock(void){
+uint8_t handleClock(void){
     uint8_t u8modulus;
 
     /* Keep track of the length of time between clocks. To get the info, we request
@@ -255,8 +261,16 @@ uint8_t handleRecInputClock(void){
         }else{
             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
         }
+
+        /*Keep track of the number of record input clocks. Know where we are in the loop
+         and cycle the loop back around in playback and overdubbing.*/
+        u8CurrentInputClockCount++;
+
+        //Add 1 because we want to end on the 1
+        u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+
     }
-    else{
+    else if(u8OperatingMode == PLAYBACK){
         /*This state is for playback.*/
         if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
@@ -270,17 +284,27 @@ uint8_t handleRecInputClock(void){
          * If the result has changed, speed up or slow down the playback.
          */
         calculateAvgNumClicksBetweenClocks();
+
+        u8CurrentInputClockCount++;
+
+        if(u8CurrentInputClockCount == u8ClockLengthOfRecordedSequence){
+            u8CurrentInputClockCount = 0;
+        }
     }
+    else{
+        //This mode is for Live Play Mode when tap tempo has been activated.
+        /*This state is for playback.*/
+        if(u8CurrentInputClockCount != 0){
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
+        }else{
+            setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+        }
 
-    /*Keep track of the number of record input clocks. Know where we are in the loop
-     and cycle the loop back around in playback and overdubbing.*/
-    u8CurrentInputClockCount++;
-    
-    //Add 1 because we want to end on the 1
-    u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+        u8CurrentInputClockCount++;
 
-    if(u8OperatingMode != RECORDING && u8CurrentInputClockCount == u8ClockLengthOfRecordedSequence){
-        u8CurrentInputClockCount = 0;
+        if(u8CurrentInputClockCount == ((1 << p_VectrData->u8ClockMode) - 1)){
+            u8CurrentInputClockCount = 0;
+        }
     }
 
     if(u8modulus == 0){
@@ -295,7 +319,8 @@ void resetTapTempoMode(void){
     int i;
 
     u8TapTempoArrayIndex = 0;
-    u8CompleteTapTempoArray = FALSE;
+    u8TapTempoSetFlag = FALSE;
+    u8InitTapTempoFlag = TRUE;//Let's us know to start tap tempo with the first press.
     for(i=0; i < LENGTH_OF_TAP_TEMPO_ARRAY; i++ ){
         u32TapTempoArray[i] = 0;
     }
@@ -308,22 +333,26 @@ void runTapTempo(void){
      * If it's the first press, then start the record timer.
      */
     if(u8TapTempoKeyPressFlag == TRUE){
-        if(u8CompleteTapTempoArray == FALSE){
-            //This is the first time through.
-            if(u8TapTempoArrayIndex == 0){
+        if(u8TapTempoSetFlag == FALSE){
+            
+            if(u8InitTapTempoFlag == TRUE){
                 setClockEnableFlag(TRUE);
                 resetRecClockCount();
                 resetClockTimer();
+                u8InitTapTempoFlag = FALSE;
+                setClockEnableFlag(TRUE);
+                START_CLOCK_TIMER;
             }else{
                 u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
                 u8TapTempoArrayIndex++;
                 if(u8TapTempoArrayIndex == LENGTH_OF_TAP_TEMPO_ARRAY - 1){
-                    u8CompleteTapTempoArray = TRUE;
+                    u8TapTempoSetFlag = TRUE;
                     u8TapTempoArrayIndex = 0;
                     setClockTimerTriggerCount(calculateTapTempo());
                     resetClockTimer();
                     SET_LOOP_SYNC_OUT;
                     setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+                    u8TapTempoModeActiveFlag = FALSE;
                 }
             }
         }
@@ -331,12 +360,25 @@ void runTapTempo(void){
             //We have a complete array.
             u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
             u8TapTempoArrayIndex++;
+            if(u8TapTempoArrayIndex >= LENGTH_OF_TAP_TEMPO_ARRAY){
+                u8TapTempoArrayIndex = 0;
+            }
             setClockTimerTriggerCount(calculateTapTempo());
             resetClockTimer();
             SET_LOOP_SYNC_OUT;
             setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
         }
+        
+        u8TapTempoKeyPressFlag = FALSE;
     }
+}
+
+uint8_t getTapTempoSetFlag(void){
+    return u8TapTempoSetFlag;
+}
+
+void setClockTriggerFlag(void){
+    u8ClockTriggerFlag = TRUE;
 }
 
 uint32_t calculateTapTempo(void){
@@ -615,11 +657,13 @@ void MasterControlStateMachine(void){
                         if(u8TapTempoTriggerTimer > 0){
                             if(u8TapTempoModeActiveFlag == FALSE){
                                 u8TapTempoModeActiveFlag = TRUE;
-                                //Flash the Red LED once.
-                                setSwitchLEDState(SWITCH_LED_RED_BLINKING);
+                                //Turn on the Red switch LED
+                                setSwitchLEDState(SWITCH_LED_RED);
+                                resetTapTempoMode();
                             }
                             else{
                                 u8TapTempoModeActiveFlag = FALSE;
+                                setSwitchLEDState(SWITCH_LED_OFF);
                             }
                         }
                     }
@@ -682,6 +726,11 @@ void MasterControlStateMachine(void){
             /*If tap tempo is actively being set, run the mode*/
             if(u8TapTempoModeActiveFlag == TRUE){
                 runTapTempo();
+            }
+
+            if(u8ClockTriggerFlag == TRUE){
+                handleClock();
+                u8ClockTriggerFlag = FALSE;
             }
 
             /*Check for armed playback or recording and the appropriate trigger.*/
@@ -907,7 +956,7 @@ void MasterControlStateMachine(void){
                  */
                 if(p_VectrData->u8Control[RECORD] == TRIGGER){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                        if(handleRecInputClock()){
+                        if(handleClock()){
                             u8RecordingArmedFlag = NOT_ARMED;
                             finishRecording();
                         }
@@ -927,10 +976,10 @@ void MasterControlStateMachine(void){
                 if(p_VectrData->u8Source[RECORD] == EXTERNAL
                    && (u8RecordTrigger == TRIGGER_WENT_HIGH)){
                     if(p_VectrData->u8Control[RECORD] == TRIGGER){
-                        handleRecInputClock();
+                        handleClock();
                     }
                     else if(p_VectrData->u8Control[RECORD] == TRIGGER_AUTO){
-                        if(handleRecInputClock()){
+                        if(handleClock()){
                             u8RecordingArmedFlag = NOT_ARMED;
                             u8RecordTrigger = NO_TRIGGER;
                             finishRecording();
@@ -1122,7 +1171,7 @@ void MasterControlStateMachine(void){
                      */
                     if(u8PlaybackRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                            handleRecInputClock();
+                            handleClock();
                             regulateClockPlaybackSpeed();//Keep playback speed running.
                         }
                         else{
@@ -1140,7 +1189,7 @@ void MasterControlStateMachine(void){
                          */
                         if(u8PlaybackRunFlag == PAUSED){
                             if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                                handleRecInputClock();
+                                handleClock();
                                 setPlaybackRunStatus(RUN);
                             }
                         }
@@ -1396,7 +1445,7 @@ void MasterControlStateMachine(void){
                      */
                     if(u8OverdubRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                            handleRecInputClock();
+                            handleClock();
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
@@ -1413,7 +1462,7 @@ void MasterControlStateMachine(void){
                          */
                         if(u8OverdubRunFlag == PAUSED){
                             if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                                handleRecInputClock();
+                                handleClock();
                                 u8OverdubRunFlag = RUN;
                             }
                         }
@@ -2809,7 +2858,7 @@ void switchStateMachine(void){
                 break;
             case MAIN_SWITCH_PRESSED://LIVE PLAY
                //If we're in menu mode, main switch is exit.
-               if(u8MenuModeFlag == FALSE && u8TapTempoModeActiveFlag == FALSE){
+               if(u8MenuModeFlag == FALSE){
                    if(u8TapTempoModeActiveFlag == FALSE){
                        if(p_VectrData->u8Source[RECORD] == SWITCH){
                            u8OperatingMode = RECORDING;
