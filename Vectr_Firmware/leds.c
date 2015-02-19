@@ -216,7 +216,7 @@ void ledStateMachine(void){
          */
         if(u8SwitchLEDState > SWITCH_LED_RED){
             
-            if(getRecordSource() == SWITCH){
+            if(u8SwitchLEDState > SWITCH_LED_RED_BLINK_ONCE){
                 BlinkSwitchLED();
             }
             else{
@@ -439,6 +439,16 @@ void setSwitchLEDState(uint8_t u8NewState){
             break;
         case SWITCH_LED_RED:
             SET_SWITCH_LED_RED;
+            break;
+        case SWITCH_LED_GREEN_BLINK_ONCE:
+            SET_SWITCH_LED_GREEN;
+            u8SwitchLEDBlinkState = TRUE;
+            u8SwitchBlinkTimer = SWITCH_BLINK_TIMER_RESET;
+            break;
+        case SWITCH_LED_RED_BLINK_ONCE:
+            SET_SWITCH_LED_RED;
+            u8SwitchLEDBlinkState = TRUE;
+            u8SwitchBlinkTimer = SWITCH_BLINK_TIMER_RESET;
             break;
         case SWITCH_LED_GREEN_BLINKING:
             SET_SWITCH_LED_GREEN;
