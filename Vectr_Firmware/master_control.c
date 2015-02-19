@@ -107,8 +107,6 @@ static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
 
 static uint8_t u8TapTempoModeActiveFlag;
-static uint8_t u8TapTempoTriggerTimer;
-#define TAP_TEMPO_TIMER_RESET   20
 static uint8_t u8TapTempoKeyPressFlag;
 #define LENGTH_OF_TAP_TEMPO_ARRAY   4
 static uint32_t u32TapTempoArray[LENGTH_OF_TAP_TEMPO_ARRAY];
@@ -117,6 +115,14 @@ static uint8_t u8TapTempoSetFlag;
 static uint8_t u8InitTapTempoFlag;
 static uint8_t u8ClockTriggerFlag;//Set by the Timer clock routine in app.c TIM3 to inform that the clock expired.
 
+static uint8_t u8MultiTapTriggerTimer;
+#define MULTI_TAP_TIMER_RESET   20
+uint8_t u8decodeMultiTapGestureState;
+enum{
+    WAITING_FOR_GESTURE = 0,
+    FIRST_TAP_TEMPO_GESTURE_RECEIVED,
+    WAITING_FOR_SECOND_TAP_TEMPO_GESTURE
+};
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
 #define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
@@ -198,6 +204,8 @@ uint32_t calculateAvgNumClicksBetweenClocks(void);
 void resetTapTempoMode(void);
 void runTapTempo(void);
 uint32_t calculateTapTempo(void);
+void resetMultiTapGestureDetection(void);
+uint8_t decodeMultiTapGestures(uint16_t u16TouchData);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -457,6 +465,7 @@ void regulateClockPlaybackSpeed(void){
     }
 }
 
+
 void MasterControlInit(void){
 
     defaultSettings();
@@ -523,6 +532,13 @@ void MasterControlStateMachine(void){
     /*Gesture debouncing keeps accidental gestures from occurring after the last gesture.*/
     if(u8GestureDebounceTimer > 0){
        u8GestureDebounceTimer--;
+    }
+
+    if(u8MultiTapTriggerTimer > 0){
+        u8MultiTapTriggerTimer--;
+        if(u8MultiTapTriggerTimer == 0){
+            resetMultiTapGestureDetection();
+        }
     }
 
     switchStateMachine();//Handle switch presses to change state
@@ -628,24 +644,7 @@ void MasterControlStateMachine(void){
                      * 1. Tap on the right electrode.
                      * 2. Tap on the left electrode within 100ms.
                      */
-                    if(u16TouchData == MGC3130_TAP_RIGHT){
-                        //Start the timer to look for the left tap.
-                        u8TapTempoTriggerTimer = TAP_TEMPO_TIMER_RESET;
-                    }
-                    else if(u16TouchData == MGC3130_TAP_LEFT){
-                        if(u8TapTempoTriggerTimer > 0){
-                            if(u8TapTempoModeActiveFlag == FALSE){
-                                u8TapTempoModeActiveFlag = TRUE;
-                                //Turn on the Red switch LED
-                                setSwitchLEDState(SWITCH_LED_RED);
-                                resetTapTempoMode();
-                            }
-                            else{
-                                u8TapTempoModeActiveFlag = FALSE;
-                                setSwitchLEDState(SWITCH_LED_OFF);
-                            }
-                        }
-                    }
+                    decodeMultiTapGestures(u16TouchData);
                 }
             }
             else{
@@ -1024,7 +1023,7 @@ void MasterControlStateMachine(void){
             /*Playback - Decode touch and gestures. If a double tap on the bottom occurs,
                  * enter menu mode*/
                 u16TouchData = pos_and_gesture_struct.u16Touch;
-                if(u16TouchData != MGC3130_NO_TOUCH){
+                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){
                     u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
                     switch(u8GestureFlag){
                         case MENU_MODE:
@@ -1057,7 +1056,14 @@ void MasterControlStateMachine(void){
                         default:
                             break;
                     }
+                }else{
+                    /*Check for entering tap tempo mode
+                     * 1. Tap on the right electrode.
+                     * 2. Tap on the left electrode within 100ms.
+                     */
+                    decodeMultiTapGestures(u16TouchData);
                 }
+
                 /*Playback - Airwheel adjust speed.*/
                 u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
 
@@ -1084,6 +1090,11 @@ void MasterControlStateMachine(void){
                     //Don't adjust speed during a hold
                     u16LastAirWheelData = u16AirwheelData;
                 }
+            }
+
+            /*If tap tempo is actively being set, run the mode*/
+            if(u8TapTempoModeActiveFlag == TRUE){
+                runTapTempo();
             }
 
             /*If we're in gate mode, then a low level stops playback. A high level starts recording.
@@ -3123,12 +3134,19 @@ void switchStateMachine(void){
                  * REC/EXT/GATE - Arm recording
                  */
                 if(u8MenuModeFlag == FALSE){
-                    if(p_VectrData->u8Source[RECORD] == SWITCH){
-                       u8OperatingMode = RECORDING;
-                       startNewRecording();
-                    }else{
-                       armRecording();
-                    }
+                   if(u8TapTempoModeActiveFlag == FALSE){
+                       if(p_VectrData->u8Source[RECORD] == SWITCH && u8TapTempoSetFlag == FALSE){
+                           //If recording is internal and free flowing, start recording.
+                           u8OperatingMode = RECORDING;
+                           startNewRecording();
+                       }else{
+                           //Go to record mode and wait for the trigger?
+                           armRecording();
+                       }
+                   }
+                   else{
+                       u8TapTempoKeyPressFlag = TRUE;
+                   }
                }
                else{
                    setMenuExitFlag();
@@ -3398,6 +3416,42 @@ uint8_t decodeXYZTouchGesture(uint16_t u16Data){
     }
 
     return 255;
+}
+
+void resetMultiTapGestureDetection(void){
+    u8decodeMultiTapGestureState = WAITING_FOR_GESTURE;
+}
+
+uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
+
+    switch(u8decodeMultiTapGestureState){
+
+        case WAITING_FOR_GESTURE:
+            if(u16TouchData == MGC3130_TAP_RIGHT){
+                //Start the timer to look for the left tap.
+                u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
+                u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
+            }
+            break;
+        case FIRST_TAP_TEMPO_GESTURE_RECEIVED:
+            if(u16TouchData == MGC3130_TAP_LEFT){
+                if(u8MultiTapTriggerTimer > 0){
+                    if(u8TapTempoModeActiveFlag == FALSE){
+                        u8TapTempoModeActiveFlag = TRUE;
+                        //Turn on the Red switch LED
+                        setSwitchLEDState(SWITCH_LED_RED);
+                        resetTapTempoMode();
+                    }
+                    else{
+                        u8TapTempoModeActiveFlag = FALSE;
+                        setSwitchLEDState(SWITCH_LED_OFF);
+                    }
+                }
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 uint8_t decodeDoubleTapGesture(uint16_t u16Data){
