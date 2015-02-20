@@ -123,7 +123,8 @@ uint8_t u8decodeMultiTapGestureState;
 enum{
     WAITING_FOR_GESTURE = 0,
     FIRST_TAP_TEMPO_GESTURE_RECEIVED,
-    WAITING_FOR_SECOND_TAP_TEMPO_GESTURE
+    WAITING_FOR_SECOND_TAP_TEMPO_GESTURE,
+    FIRST_TIME_QUANT_GESTURE_RECEIVED
 };
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
@@ -712,6 +713,8 @@ void MasterControlStateMachine(void){
 
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
+
+            /*Time Quantization*/
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
@@ -1766,6 +1769,9 @@ void defaultSettings(void){
     VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u8NumRecordClocks = CLOCK_PULSE_1;
+    VectrData.u8TimeQuantization[X_OUTPUT_INDEX] = FALSE;
+    VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] = FALSE;
+    VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] = FALSE;
 }
 
 void runPlaybackMode(void){
@@ -3452,28 +3458,53 @@ void resetMultiTapGestureDetection(void){
 uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
 
     switch(u8decodeMultiTapGestureState){
-
         case WAITING_FOR_GESTURE:
-            if(u16TouchData == MGC3130_TAP_RIGHT){
-                //Start the timer to look for the left tap.
-                u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
-                u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
+            switch(u16TouchData){
+                case MGC3130_TAP_RIGHT:
+                    //Start the timer to look for the left tap.
+                    u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
+                    u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
+                    break;
+                case MGC3130_TAP_BOTTOM:
+                    //Start the timer to look for the left tap.
+                    u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
+                    u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
+                    break;
+                default:
+                    break;
             }
+
             break;
         case FIRST_TAP_TEMPO_GESTURE_RECEIVED:
-            if(u8MultiTapTriggerTimer > 0){
-                if(u16TouchData == MGC3130_TAP_LEFT){
-                    if(u8TapTempoModeActiveFlag == FALSE){
-                        u8TapTempoModeActiveFlag = TRUE;
-                        //Turn on the Red switch LED
-                        setSwitchLEDState(SWITCH_LED_RED);
-                        resetTapTempoMode();
-                    }
-                    else{
-                        u8TapTempoModeActiveFlag = FALSE;
-                        setSwitchLEDState(SWITCH_LED_OFF);
-                    }
+            if(u16TouchData == MGC3130_TAP_LEFT){
+                if(u8TapTempoModeActiveFlag == FALSE){
+                    u8TapTempoModeActiveFlag = TRUE;
+                    //Turn on the Red switch LED
+                    setSwitchLEDState(SWITCH_LED_RED);
+                    resetTapTempoMode();
                 }
+                else{
+                    u8TapTempoModeActiveFlag = FALSE;
+                    setSwitchLEDState(SWITCH_LED_OFF);
+                }
+            }
+            break;
+        case FIRST_TIME_QUANT_GESTURE_RECEIVED:
+            switch(u16TouchData){
+                case MGC3130_TAP_LEFT:
+                    //Toggle X time quantization.
+                    VectrData.u8TimeQuantization[X_OUTPUT_INDEX] ^= 0x01;
+                    break;
+                case MGC3130_TAP_TOP:
+                    //Toggle Y time quantization.
+                    VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] ^= 0x01;
+                    break;
+                case MGC3130_TAP_RIGHT:
+                    //Toggle Z time quantization.
+                    VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] ^= 0x01;
+                    break;
+                default:
+                    break;
             }
             break;
         default:

@@ -269,6 +269,7 @@ typedef struct{
     uint8_t u8GateMode;
     uint8_t u8NumRecordClocks;//The number of clocks to be counted for auto recording and also
                                 //the number of clock multiples for external recording.
+    uint8_t u8TimeQuantization[NUMBER_OF_OUTPUTS];
 }VectrDataStruct;
 
 
