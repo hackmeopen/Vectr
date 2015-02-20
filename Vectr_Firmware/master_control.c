@@ -37,6 +37,8 @@
 //TODO: Make playback start back at the beginning when playback is restarted from live play mode.
 //TODO: Make sure we're not counting clocks during hold in external recording mode.
 //TODO: Make Z output decay to zero when the hand is taken away.
+//TODO: General exception handler with entering sequencer from live play
+//TODO: Tap tempo recording starts one clock late.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -116,7 +118,7 @@ static uint8_t u8InitTapTempoFlag;
 static uint8_t u8ClockTriggerFlag;//Set by the Timer clock routine in app.c TIM3 to inform that the clock expired.
 
 static uint8_t u8MultiTapTriggerTimer;
-#define MULTI_TAP_TIMER_RESET   20
+#define MULTI_TAP_TIMER_RESET   50
 uint8_t u8decodeMultiTapGestureState;
 enum{
     WAITING_FOR_GESTURE = 0,
@@ -337,8 +339,11 @@ void resetTapTempoMode(void){
     }
 }
 
+
+
 void runTapTempo(void){
     int i;
+    static uint8_t u8TimeOutTimer = 100;
 
     /* If the switch has been pressed, log the time between steps.
      * If it's the first press, then start the record timer.
@@ -353,9 +358,11 @@ void runTapTempo(void){
                 u8InitTapTempoFlag = FALSE;
                 setClockEnableFlag(TRUE);
                 START_CLOCK_TIMER;
+                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
             }else{
                 u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
                 u8TapTempoArrayIndex++;
+                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
                 if(u8TapTempoArrayIndex == LENGTH_OF_TAP_TEMPO_ARRAY - 1){
                     u8TapTempoSetFlag = TRUE;
                     u8TapTempoArrayIndex = 0;
@@ -363,11 +370,12 @@ void runTapTempo(void){
                     resetClockTimer();
                     SET_LOOP_SYNC_OUT;
                     setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
-                    u8TapTempoModeActiveFlag = FALSE;
+                   // u8TapTempoModeActiveFlag = FALSE;
                 }
             }
         }
         else{
+            u8TimeOutTimer = 100;
             //We have a complete array.
             u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
             u8TapTempoArrayIndex++;
@@ -381,6 +389,12 @@ void runTapTempo(void){
         }
         
         u8TapTempoKeyPressFlag = FALSE;
+    }
+
+    if(u8TapTempoSetFlag == TRUE){
+        if(u8TimeOutTimer-- == 0){
+            u8TapTempoModeActiveFlag = FALSE;
+        }
     }
 }
 
@@ -477,6 +491,7 @@ void MasterControlInit(void){
     u16ModulationOnFlag = FALSE;
     CLEAR_GATE_OUT_PORT;
     CLEAR_LOOP_SYNC_OUT;
+    resetMultiTapGestureDetection();
 
     if(MODULATION_JACK_PLUGGED_IN){
         u16ModulationOnFlag = TRUE;
@@ -976,7 +991,7 @@ void MasterControlStateMachine(void){
                             u8RecordingArmedFlag = NOT_ARMED;
                             finishRecording();
                        }
-                       u8ClockTriggerFlag == TRUE;
+                       u8ClockTriggerFlag = FALSE;
                     }
                 }
             }else{
@@ -2788,7 +2803,9 @@ void finishRecording(void){
     u8HoldState = OFF;
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
-    calculateClockTimer(u32PlaybackSpeed);
+    if(u8TapTempoSetFlag == FALSE){
+        calculateClockTimer(u32PlaybackSpeed);
+    }
     setPlaybackDirection(FORWARD_PLAYBACK);
     u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
     u32TargetNumTicksBetweenClocks = calculateAvgNumClicksBetweenClocks();//Needed to change playback speed.
@@ -2800,11 +2817,9 @@ void finishRecording(void){
         u8BufferDataCount = 0;
         u8OperatingMode = PLAYBACK;
         setPlaybackRunStatus(RUN);
-       // setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
     }
     else{//Regular trigger mode ends recording without starting playback and stays in record mode.
         u8PlaybackRunFlag = ENDED;
-       // setSwitchLEDState(SWITCH_LED_OFF);
     }
 }
 
@@ -2985,11 +3000,23 @@ void switchStateMachine(void){
                 if(u8MenuModeFlag == FALSE){
                     if(p_VectrData->u8Source[RECORD] == SWITCH){
                         //Problem here for ending recording with tap tempo.
-                        if(u8RecordRunFlag == TRUE){
-                            finishRecording();
-                        }
-                        else{
-                            startNewRecording();
+                        if(u8TapTempoSetFlag == FALSE){
+
+                            if(u8RecordRunFlag == TRUE){
+                                finishRecording();
+                            }
+                            else{
+                                startNewRecording();
+                            }
+                        }else{
+                            if(u8RecordRunFlag == FALSE){
+                                armRecording();
+                            }
+                            else{
+                                if(p_VectrData->u8Control[RECORD] != TRIGGER_AUTO){
+                                    disarmRecording();
+                                }
+                            }
                         }
                     }
                     else{
@@ -3434,8 +3461,8 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
             }
             break;
         case FIRST_TAP_TEMPO_GESTURE_RECEIVED:
-            if(u16TouchData == MGC3130_TAP_LEFT){
-                if(u8MultiTapTriggerTimer > 0){
+            if(u8MultiTapTriggerTimer > 0){
+                if(u16TouchData == MGC3130_TAP_LEFT){
                     if(u8TapTempoModeActiveFlag == FALSE){
                         u8TapTempoModeActiveFlag = TRUE;
                         //Turn on the Red switch LED
