@@ -39,6 +39,8 @@
 //TODO: Make Z output decay to zero when the hand is taken away.
 //TODO: General exception handler with entering sequencer from live play
 //TODO: Tap tempo recording starts one clock late.
+//TODO: Indicate entering and exiting time quantization.
+//TODO: Turn off tap tempo when external recording is enabled.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -93,6 +95,7 @@ static pos_and_gesture_data pos_and_gesture_struct;
 static pos_and_gesture_data * p_mem_pos_and_gesture_struct;
 static pos_and_gesture_data * p_overdub_pos_and_gesture_struct;
 static pos_and_gesture_data hold_position_struct;
+static pos_and_gesture_data time_quantize_struct;
 
 static uint8_t u8BufferDataCount = 0;
 
@@ -209,6 +212,7 @@ void runTapTempo(void);
 uint32_t calculateTapTempo(void);
 void resetMultiTapGestureDetection(void);
 uint8_t decodeMultiTapGestures(uint16_t u16TouchData);
+void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockFlag);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -480,6 +484,31 @@ void regulateClockPlaybackSpeed(void){
     }
 }
 
+/*Time quantization
+ * If an axis is time quantized, it only changes on a clock edge.
+ */
+void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockFlag){
+    int i;
+    uint16_t * p_u16CurrentPosition = &time_quantize_struct.u16XPosition;
+    uint16_t * p_u16NewPosition = (uint16_t *) pos_and_gesture_struct;
+
+    for(i=0;i<NUMBER_OF_OUTPUTS;i++){
+        //If time quantization for that axis is on.
+        if(p_VectrData->u8TimeQuantization[i] == TRUE){
+            //If a clock pulse came in.
+            if(!u8ClockFlag){
+                //Hold the output til the next clock cycle.
+                *(p_u16NewPosition+i) = *(p_u16CurrentPosition + i);
+            }
+            else{
+                //Store the new position value.
+                *(p_u16CurrentPosition + i) =  *(p_u16NewPosition+i);
+            }
+        }
+    }
+
+}
+
 
 void MasterControlInit(void){
 
@@ -669,6 +698,32 @@ void MasterControlStateMachine(void){
                 pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
             }
 
+            /*Handle time quantization. If an output is time quantized, then
+             * it only changes when we get a clock pulse.
+             */
+            if(u8TapTempoSetFlag == TRUE){
+
+                if(u8ClockTriggerFlag == TRUE){
+                   handleTimeQuantization(&pos_and_gesture_struct, TRUE);
+                   handleClock();
+                    if(u8RecordingArmedFlag != ARMED){
+                        u8ClockTriggerFlag = FALSE;
+                    }
+                }
+                else{
+                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
+                }
+            }
+            else if(p_VectrData->u8Source[RECORD] == EXTERNAL){
+                if(u8RecordTrigger == TRIGGER_WENT_HIGH) {
+                    handleTimeQuantization(&pos_and_gesture_struct, TRUE);
+                    handleClock();
+                }
+                else{
+                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
+                }
+            }
+
             slewPosition(&pos_and_gesture_struct);
 
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
@@ -771,10 +826,7 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            if(u8ClockTriggerFlag == TRUE){
-                handleClock();
-                u8ClockTriggerFlag = FALSE;
-            }
+            
 
             break;
 //RECORDING
@@ -3468,7 +3520,7 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
                 case MGC3130_TAP_BOTTOM:
                     //Start the timer to look for the left tap.
                     u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
-                    u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
+                    u8decodeMultiTapGestureState = FIRST_TIME_QUANT_GESTURE_RECEIVED;
                     break;
                 default:
                     break;
@@ -3494,14 +3546,20 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
                 case MGC3130_TAP_LEFT:
                     //Toggle X time quantization.
                     VectrData.u8TimeQuantization[X_OUTPUT_INDEX] ^= 0x01;
+                    u8MultiTapTriggerTimer = 0;
+                    resetMultiTapGestureDetection();
                     break;
                 case MGC3130_TAP_TOP:
                     //Toggle Y time quantization.
                     VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] ^= 0x01;
+                    u8MultiTapTriggerTimer = 0;
+                    resetMultiTapGestureDetection();
                     break;
                 case MGC3130_TAP_RIGHT:
                     //Toggle Z time quantization.
                     VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] ^= 0x01;
+                    u8MultiTapTriggerTimer = 0;
+                    resetMultiTapGestureDetection();
                     break;
                 default:
                     break;
@@ -3595,6 +3653,8 @@ uint8_t getCurrentQuantization(uint8_t u8Index){
 void setCurrentQuantization(uint8_t u8Index, uint16_t u16CurrentParameter){
     p_VectrData->u16Quantization[u8Index] = u16CurrentParameter;
 }
+
+
 
 /*This function uses the slew parameter to slow the rate of change of the position*/
 void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
