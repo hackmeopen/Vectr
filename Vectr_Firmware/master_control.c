@@ -29,18 +29,20 @@
 //TODO: Test - Make sure playback is smooth. There may be some sort of jumps.
 //TODO: Test - Second press during TRIGA external recording should be disregarded.
 
-//TODO: Fix the switch blinking for when the record mode is internal
-//TODO: Implement the hand gate output "being recorded" - Fake the playback.
-//TODO: Implement time quantization - Make a way to turn it on and off with gestures.
-//TODO: Add the new clock sync to muting, sequencing, and air scratching modes.
+//TODO: Test - Implement time quantization - Make a way to turn it on and off with gestures.
+//TODO: Test - Fix the switch blinking for when the record mode is internal
+//TODO: Test - Make Z output decay to zero when the hand is taken away.
+//TODO: Test - Implement the hand gate output "being recorded" - Fake the playback.
+//TODO: Test - Add the new clock sync to muting, sequencing.
+//TODO: Test - Make playback start back at the beginning when playback is restarted from live play mode.
+//TODO: Test - ???Make sure we're not counting clocks during hold in external recording mode.
+
 //TODO: Implement quantized speed changes when record is set to external.
-//TODO: Make playback start back at the beginning when playback is restarted from live play mode.
-//TODO: Make sure we're not counting clocks during hold in external recording mode.
-//TODO: Make Z output decay to zero when the hand is taken away.
 //TODO: General exception handler with entering sequencer from live play
 //TODO: Tap tempo recording starts one clock late.
 //TODO: Indicate entering and exiting time quantization.
 //TODO: Turn off tap tempo when external recording is enabled.
+//TODO: Handle record clock during air scratching.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -163,6 +165,8 @@ static uint32_t u32PlaybackSpeed = STANDARD_PLAYBACK_SPEED;//Number of speed inc
 static int16_t i16PlaybackData = 0;
 static uint16_t u16PlaybackSpeedTableIndex = INITIAL_SPEED_INDEX;
 
+#define Z_OUTPUT_DECAY_RATE 100 //How many counts per cycle will the Z decay at.
+
 const uint16_t u16PrescaleValues[8] = {TMR_PRESCALE_VALUE_1,
 TMR_PRESCALE_VALUE_2,
 TMR_PRESCALE_VALUE_4,
@@ -194,7 +198,7 @@ void gateHandler(void);
 void holdHandler(pos_and_gesture_data * p_position_data_struct, pos_and_gesture_data * p_memory_data_struct,
 pos_and_gesture_data * p_hold_data_struct);
 uint16_t scaleBinarySearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
-void runPlaybackMode(void);
+void runPlaybackMode(uint8_t u8RecordTrigger /* = 0 */);
 void mutePosition(pos_and_gesture_data * p_pos_and_gesture_struct);
 void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct);
 void adjustSpeedModulation(uint16_t u16NewValue);
@@ -213,6 +217,7 @@ uint32_t calculateTapTempo(void);
 void resetMultiTapGestureDetection(void);
 uint8_t decodeMultiTapGestures(uint16_t u16TouchData);
 void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockFlag);
+void handleZDecay(pos_and_gesture_data * pos_and_gesture_struct);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -509,6 +514,15 @@ void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8
 
 }
 
+void handleZDecay(pos_and_gesture_data * pos_and_gesture_struct){
+    if(pos_and_gesture_struct->u16ZPosition > Z_OUTPUT_DECAY_RATE){
+       pos_and_gesture_struct->u16ZPosition -= Z_OUTPUT_DECAY_RATE;
+    }else{
+       pos_and_gesture_struct->u16ZPosition = 0;
+    }
+
+    p_VectrData->u16CurrentZPosition = pos_and_gesture_struct->u16ZPosition;
+}
 
 void MasterControlInit(void){
 
@@ -531,6 +545,11 @@ void MasterControlInit(void){
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
 }
 
+#define LENGTH_OF_LOG  500
+uint16_t  u16LogIndex;
+uint16_t u16LogXValues[LENGTH_OF_LOG];
+uint16_t u16LogIncomingXValues[LENGTH_OF_LOG];
+
 
 /*  Implementing the internally regulated clock + getting the LED blinking during internally sync'ed recording.
  *  Set up a default clock rate of 120BPM
@@ -541,7 +560,9 @@ void MasterControlInit(void){
  */
 
 void MasterControlStateMachine(void){
-    
+
+    static pos_and_gesture_data last_position_data;
+
     uint8_t u8MessageReceivedFlag = FALSE;
     uint16_t u16TouchData;
     uint16_t u16AirwheelData;
@@ -562,7 +583,20 @@ void MasterControlStateMachine(void){
     u8SampleTimerFlag = xSemaphoreTake(xSemaphoreSampleTimer, 7*TICKS_PER_MS);
 
     //This queue receives position and gesture data from the I2C algorithm
-    u8MessageReceivedFlag = xQueueReceive(xPositionQueue, &pos_and_gesture_struct, 0);
+    if(xQueueReceive(xPositionQueue, &pos_and_gesture_struct, 0)){
+        u8MessageReceivedFlag = TRUE;
+        last_position_data.u16XPosition = pos_and_gesture_struct.u16XPosition;
+        last_position_data.u16YPosition = pos_and_gesture_struct.u16YPosition;
+        last_position_data.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+    }
+    else{
+        u8MessageReceivedFlag = FALSE;
+        pos_and_gesture_struct.u16XPosition = last_position_data.u16XPosition;
+        pos_and_gesture_struct.u16YPosition = last_position_data.u16YPosition;
+        pos_and_gesture_struct.u16ZPosition = last_position_data.u16ZPosition;
+    }
+
+    u16LogIncomingXValues[u16LogIndex] = pos_and_gesture_struct.u16XPosition;
 
     //Run menu mode if it's active. The encoder is either used for menu mode or for
     //live interactions. Can't be both at the same time.
@@ -637,9 +671,6 @@ void MasterControlStateMachine(void){
        }
     }
 
-    //Handle the gate output and the clock output.
-    gateHandler();
-
     //The following state machine handles the outputs related to each state.
     switch(u8OperatingMode){
         case LIVE_PLAY:
@@ -692,10 +723,50 @@ void MasterControlStateMachine(void){
                     decodeMultiTapGestures(u16TouchData);
                 }
             }
-            else{
-                pos_and_gesture_struct.u16XPosition = p_VectrData->u16CurrentXPosition;
-                pos_and_gesture_struct.u16YPosition = p_VectrData->u16CurrentYPosition;
-                pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
+
+            //Handle the gate output
+            gateHandler();
+
+            if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
+                u8HoldActivationFlag = HOLD_ACTIVATE;
+                u8HandHoldFlag =  TRUE;
+            }
+            else if(u8HandPresentFlag == TRUE &&  u8HandHoldFlag == TRUE){
+                u8HandHoldFlag = FALSE;
+                u8HoldActivationFlag = HOLD_DEACTIVATE;
+            }         
+
+            /*If we've received a hold command, store the current value.*/
+            if(u8HoldActivationFlag == HOLD_ACTIVATE){
+                u8HoldState = ON;
+                setHoldPosition(&pos_and_gesture_struct);
+            }
+            else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
+                u8HoldState = OFF;
+            }
+            else if(u8LivePlayActivationFlag == TRUE){
+                /*We're already in live play. Just clear the flags.*/
+                u8HoldState = OFF;
+                u8LivePlayActivationFlag = FALSE;
+            }
+
+            /*If hold is active, execute the hold behavior*/
+            if(u8HoldState == ON){
+
+                holdHandler(&pos_and_gesture_struct, &pos_and_gesture_struct, &hold_position_struct);
+
+                //If the hand hold is active, decay the Z output.
+                if(u8HandHoldFlag == TRUE){
+                    handleZDecay(&pos_and_gesture_struct);
+                    last_position_data.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+                    hold_position_struct.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+                }
+            }
+
+
+            /*If menu mode is active, the menu controls the LEDs.*/
+            if(u8MenuModeFlag == FALSE){
+                xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
             }
 
             /*Handle time quantization. If an output is time quantized, then
@@ -726,39 +797,6 @@ void MasterControlStateMachine(void){
 
             slewPosition(&pos_and_gesture_struct);
 
-            if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
-                u8HoldActivationFlag = HOLD_ACTIVATE;
-                u8HandHoldFlag =  TRUE;
-            }
-            else if(u8HandPresentFlag == TRUE &&  u8HandHoldFlag == TRUE){
-                u8HandHoldFlag = FALSE;
-                u8HoldActivationFlag = HOLD_DEACTIVATE;
-            }         
-
-            /*If we've received a hold command, store the current value.*/
-            if(u8HoldActivationFlag == HOLD_ACTIVATE){
-                u8HoldState = ON;
-                setHoldPosition(&pos_and_gesture_struct);
-            }
-            else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
-                u8HoldState = OFF;
-            }
-            else if(u8LivePlayActivationFlag == TRUE){
-                /*We're already in live play. Just clear the flags.*/
-                u8HoldState = OFF;
-                u8LivePlayActivationFlag = FALSE;
-            }
-
-            /*If hold is active, execute the hold behavior*/
-            if(u8HoldState == ON){
-                holdHandler(&pos_and_gesture_struct, &pos_and_gesture_struct, &hold_position_struct);
-            }
-
-            /*If menu mode is active, the menu controls the LEDs.*/
-            if(u8MenuModeFlag == FALSE){
-                xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
-            }
-
             mutePosition(&pos_and_gesture_struct);
 
             linearizePosition(&pos_and_gesture_struct);
@@ -770,6 +808,12 @@ void MasterControlStateMachine(void){
             quantizePosition(&pos_and_gesture_struct);
 
             /*Time Quantization*/
+
+            u16LogXValues[u16LogIndex++] = pos_and_gesture_struct.u16XPosition;
+
+            if(u16LogIndex >= LENGTH_OF_LOG){
+                u16LogIndex = 0;
+            }
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
@@ -790,6 +834,7 @@ void MasterControlStateMachine(void){
                         if(u8SequenceRecordedFlag == TRUE){
                             u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
+                            setRAMRetriggerFlag();
                         }
                     }
                 }else{
@@ -801,6 +846,7 @@ void MasterControlStateMachine(void){
                             u8PlaybackArmedFlag = NOT_ARMED;
                             u8OperatingMode = PLAYBACK;
                             u8PlaybackRunFlag = RUN;
+                            setRAMRetriggerFlag();
                         }
                     }
                 }
@@ -825,9 +871,6 @@ void MasterControlStateMachine(void){
                     }
                 }
             }
-
-            
-
             break;
 //RECORDING
         case RECORDING:  
@@ -893,6 +936,9 @@ void MasterControlStateMachine(void){
                 }
             }
 
+            //Handle the gate output
+            gateHandler();
+
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
                 u8HoldActivationFlag = HOLD_ACTIVATE;
                 u8HandHoldFlag =  TRUE;
@@ -920,7 +966,36 @@ void MasterControlStateMachine(void){
 
             /*If hold is active, execute the hold behavior*/
             if(u8HoldState == ON){
+                //If the hand hold is active, decay the Z output.
+                if(u8HandHoldFlag == TRUE){
+                    handleZDecay(&pos_and_gesture_struct);
+                }
                 holdHandler(&pos_and_gesture_struct, NULL, &hold_position_struct);
+            }
+
+            /*Handle time quantization. If an output is time quantized, then
+             * it only changes when we get a clock pulse.
+             */
+            if(u8TapTempoSetFlag == TRUE){
+                if(u8ClockTriggerFlag == TRUE){
+                   handleTimeQuantization(&pos_and_gesture_struct, TRUE);
+                   handleClock();
+                    if(u8RecordingArmedFlag != ARMED){
+                        u8ClockTriggerFlag = FALSE;
+                    }
+                }
+                else{
+                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
+                }
+            }
+            else if(p_VectrData->u8Source[RECORD] == EXTERNAL){
+                if(u8RecordTrigger == TRIGGER_WENT_HIGH) {
+                    handleTimeQuantization(&pos_and_gesture_struct, TRUE);
+                    handleClock();
+                }
+                else{
+                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
+                }
             }
 
             slewPosition(&pos_and_gesture_struct);
@@ -1084,7 +1159,7 @@ void MasterControlStateMachine(void){
         case PLAYBACK:
             /*If playback is running, read the RAM.*/
             if(u8SampleTimerFlag == TRUE){
-                runPlaybackMode();
+                runPlaybackMode(u8RecordTrigger);
             }
 
             /*During playback, we are only looking for gestures to enter performance
@@ -1244,8 +1319,6 @@ void MasterControlStateMachine(void){
                     setSwitchLEDState(SWITCH_LED_OFF);
                 }
             }
-
-
 
             if(u8RecordingArmedFlag == ARMED){
                 if(p_VectrData->u8Source[RECORD] == EXTERNAL){
@@ -1551,7 +1624,7 @@ void MasterControlStateMachine(void){
 
                 /*If record mode is set to external, we use the record input clock
                  * to keep the loop synchronized, to adjust to changes in tempo,
-                 * and to start and stop the loop based on the presence or absense of
+                 * and to start and stop the loop based on the presence or absence of
                  * the clock.
                  */
                 if( p_VectrData->u8Control[RECORD] != GATE
@@ -1565,13 +1638,14 @@ void MasterControlStateMachine(void){
                     if(u8OverdubRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleClock();
+                            regulateClockPlaybackSpeed();//Keep playback speed running.
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
                              * the expected number of ticks between clocks.
                              */
                             if(getRecClockCount() > u32ExpectedNumTicksBetweenClocks){
-                                u8OverdubRunFlag = PAUSED;
+                                setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }
@@ -1582,9 +1656,18 @@ void MasterControlStateMachine(void){
                         if(u8OverdubRunFlag == PAUSED){
                             if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                                 handleClock();
-                                u8OverdubRunFlag = RUN;
+                                setPlaybackRunStatus(RUN);
                             }
                         }
+                    }
+                }
+                else{
+                    //Switch triggered
+                    if(u8TapTempoSetFlag == TRUE){
+                        if(u8ClockTriggerFlag == TRUE){
+                            handleClock();
+                        }
+                        u8ClockTriggerFlag = FALSE;
                     }
                 }
             }
@@ -1605,7 +1688,7 @@ void MasterControlStateMachine(void){
              */
 
             if(u8SampleTimerFlag == TRUE && u8SequenceRecordedFlag == TRUE){
-                runPlaybackMode();
+                runPlaybackMode(u8RecordTrigger);
             }
 
             //Activate the selected sequence.
@@ -1692,13 +1775,61 @@ void MasterControlStateMachine(void){
                 }
             }
 
+             /*If record mode is set to external, we use the record input clock
+             * to keep the loop synchronized, to adjust to changes in tempo,
+             * and to start and stop the loop based on the presence or absence of
+             * the clock.
+             */
+            if( p_VectrData->u8Control[RECORD] != GATE
+                && p_VectrData->u8Source[RECORD] == EXTERNAL){
+
+                /* If playback is running, then we are looking for the clock edge.
+                 * If the timer clock has run past the point that we expect
+                 * the clock plus some margin, then we stop playback.
+                 *
+                 */
+                if(u8PlaybackRunFlag == RUN){
+                    if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                        handleClock();
+                        regulateClockPlaybackSpeed();//Keep playback speed running.
+                    }
+                    else{
+                        /* Check to see if the trigger is late. There is margin built into
+                         * the expected number of ticks between clocks.
+                         */
+                        if(getRecClockCount() > u32ExpectedNumTicksBetweenClocks){
+                            setPlaybackRunStatus(PAUSED);
+                        }
+                    }
+                }
+                else{
+                    /* If playback is paused because the clock stopped, then we look for a clock edge
+                     * to start playback again.
+                     */
+                    if(u8PlaybackRunFlag == PAUSED){
+                        if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                            handleClock();
+                            setPlaybackRunStatus(RUN);
+                        }
+                    }
+                }
+            }
+            else{
+                //Switch triggered
+                if(u8TapTempoSetFlag == TRUE){
+                    if(u8ClockTriggerFlag == TRUE){
+                        handleClock();
+                    }
+                    u8ClockTriggerFlag = FALSE;
+                }
+            }
             /*Sequencing - Keep track of airwheel data but don't do anything about it*/
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
             u16LastAirWheelData = u16AirwheelData;
             break;
         case MUTING:
             if(u8SampleTimerFlag == TRUE && u8SequenceRecordedFlag == TRUE){
-                runPlaybackMode();
+                runPlaybackMode(u8RecordTrigger);
             }
 
             if(u8MessageReceivedFlag == TRUE){
@@ -1738,6 +1869,55 @@ void MasterControlStateMachine(void){
                 }
             }
 
+             /*If record mode is set to external, we use the record input clock
+             * to keep the loop synchronized, to adjust to changes in tempo,
+             * and to start and stop the loop based on the presence or absence of
+             * the clock.
+             */
+            if( p_VectrData->u8Control[RECORD] != GATE
+                && p_VectrData->u8Source[RECORD] == EXTERNAL){
+
+                /* If playback is running, then we are looking for the clock edge.
+                 * If the timer clock has run past the point that we expect
+                 * the clock plus some margin, then we stop playback.
+                 *
+                 */
+                if(u8PlaybackRunFlag == RUN){
+                    if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                        handleClock();
+                        regulateClockPlaybackSpeed();//Keep playback speed running.
+                    }
+                    else{
+                        /* Check to see if the trigger is late. There is margin built into
+                         * the expected number of ticks between clocks.
+                         */
+                        if(getRecClockCount() > u32ExpectedNumTicksBetweenClocks){
+                            setPlaybackRunStatus(PAUSED);
+                        }
+                    }
+                }
+                else{
+                    /* If playback is paused because the clock stopped, then we look for a clock edge
+                     * to start playback again.
+                     */
+                    if(u8PlaybackRunFlag == PAUSED){
+                        if(u8RecordTrigger == TRIGGER_WENT_HIGH){
+                            handleClock();
+                            setPlaybackRunStatus(RUN);
+                        }
+                    }
+                }
+            }
+            else{
+                //Switch triggered
+                if(u8TapTempoSetFlag == TRUE){
+                    if(u8ClockTriggerFlag == TRUE){
+                        handleClock();
+                    }
+                    u8ClockTriggerFlag = FALSE;
+                }
+            }
+
             /*Keep track of airwheel data but don't do anything about it*/
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
             u16LastAirWheelData = u16AirwheelData;
@@ -1746,8 +1926,7 @@ void MasterControlStateMachine(void){
 
             runAirScratchMode(&pos_and_gesture_struct);
             
-
-            runPlaybackMode();
+            runPlaybackMode(u8RecordTrigger);
 
             if(u8MessageReceivedFlag == TRUE){
                 u16TouchData = pos_and_gesture_struct.u16Touch;
@@ -1826,7 +2005,10 @@ void defaultSettings(void){
     VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] = FALSE;
 }
 
-void runPlaybackMode(void){
+void runPlaybackMode(uint8_t u8RecordTrigger){
+
+    static uint16_t u16LastZValue = 0;
+    static uint16_t u16StaticZCount = 0;
 
    if(u8PlaybackRunFlag == RUN){
        if(u8HoldState == OFF){
@@ -1868,17 +2050,68 @@ void runPlaybackMode(void){
 
             //Playback is running. Run the clock
             setClockEnableFlag(TRUE);
+
+            /*Handle time quantization. If an output is time quantized, then
+             * it only changes when we get a clock pulse.
+             */
+            if(u8TapTempoSetFlag == TRUE){
+
+                if(u8ClockTriggerFlag == TRUE){
+                   handleTimeQuantization(&pos_and_gesture_struct, TRUE);
+                   handleClock();
+                    if(u8RecordingArmedFlag != ARMED){
+                        u8ClockTriggerFlag = FALSE;
+                    }
+                }
+                else{
+                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
+                }
+            }
+            else if(p_VectrData->u8Source[RECORD] == EXTERNAL){
+                if(u8RecordTrigger == TRIGGER_WENT_HIGH) {
+                    handleTimeQuantization(&pos_and_gesture_struct, TRUE);
+                    handleClock();
+                }
+                else{
+                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
+                }
+            }
+
             slewPosition(p_mem_pos_and_gesture_struct);
        }
        else{
         /*If hold is active, execute the hold behavior*/
+            if(u8HandHoldFlag == TRUE){
+                handleZDecay(&pos_and_gesture_struct);
+            }
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
             setClockEnableFlag(FALSE);
        }
 
+
+        if(p_VectrData->u8GateMode != HAND_GATE){
+            //Handle the gate output
+            gateHandler();
+        }else{
+            //Replay the hand presence.
+            /*If it's not a hold and z hasn't changed for three cycles, then "hand"
+              is not present.*/
+            if(u8HoldState == OFF){
+                if(pos_and_gesture_struct.u16ZPosition == u16LastZValue){
+                    u16StaticZCount++;
+                    if(u16StaticZCount >= 3){
+
+                    }
+                }
+                else{
+                    u16StaticZCount = 0;
+                    u16LastZValue = pos_and_gesture_struct.u16ZPosition;
+                }
+            }
+        }
+
        /*Check encoder activations. Could go to live play or implement a hold*/
         if(u8HoldActivationFlag == HOLD_ACTIVATE){
-
             u8HoldState = ON;
             STOP_CLOCK_TIMER;
             setHoldPosition(p_mem_pos_and_gesture_struct);
@@ -1913,7 +2146,6 @@ void runPlaybackMode(void){
    }
        
    if(u8SyncTrigger == TRUE){
-
        if(p_VectrData->u8PlaybackMode != FLIP){
            setRAMRetriggerFlag();
 
@@ -2825,7 +3057,7 @@ void startNewRecording(void){
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
 
-    if(p_VectrData->u8Source[RECORD] == SWITCH){
+    if(p_VectrData->u8Source[RECORD] == SWITCH && u8TapTempoSetFlag == FALSE){
         setSwitchLEDState(SWITCH_LED_RED_BLINKING);
     }
 
@@ -2968,6 +3200,7 @@ void switchStateMachine(void){
                             setPlaybackRunStatus(RUN);
                             u8HoldState = OFF;//Turn off hold to start playback.
                             u8HoldActivationFlag = HOLD_DEACTIVATE;
+                            setRAMRetriggerFlag();
                         }
                         else{//external control = arm playback
                             if(u8PlaybackArmedFlag != ARMED){

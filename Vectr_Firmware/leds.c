@@ -214,8 +214,7 @@ void ledStateMachine(void){
          * When it runs out the LED will be turned off.
          * Make sure we're in a blinky mode though.
          */
-        if(u8SwitchLEDState > SWITCH_LED_RED){
-            
+        if(u8SwitchLEDState > SWITCH_LED_RED){      
             if(u8SwitchLEDState > SWITCH_LED_RED_BLINK_ONCE){
                 BlinkSwitchLED();
             }
@@ -759,7 +758,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
             }
     }
 
-    if(u16_ZPosition != 0){
+   // if(u16_ZPosition != 0){
             u16_red_LED_duty_cycle = (u16_ZPosition*MAX_BRIGHTNESS/MAX_LOCATION);
-    }
+   // }
 }
