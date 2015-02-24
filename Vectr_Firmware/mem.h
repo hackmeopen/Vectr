@@ -216,6 +216,7 @@ uint32_t getMemoryStartAddress(void);
 uint32_t getEndOfSequenceAddress(void);
 uint8_t fileTableIsNotCurrent(void);
 void updateFileTable(void);
+void setClockSyncFlag(void);
 
 #endif	/* MEM_H */
 

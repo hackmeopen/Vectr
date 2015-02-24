@@ -474,9 +474,6 @@ void vTIM3InterruptHandler(void){
             u32ClockTimer = 0;
             u32RecClockCount = 0;
             clearResetFlag();
-            if(getCurrentSource(RECORD) != SWITCH){
-                //If the switch is
-            }
         }
         else{
              /*If the count has reached the trigger count, it's time for a pulse.*/

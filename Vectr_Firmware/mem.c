@@ -24,6 +24,7 @@ static uint8_t u8FileTableWriteState;
 static uint8_t u8FlashTimer = 0;
 static uint8_t u8FlashWriteEnabledFlag = FALSE;
 static uint32_t u32FirstSampleAddress;
+static uint8_t u8ClockSyncFlag =  FALSE;
 
 static uint8_t u8SPI_MEM_TX_Buffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static uint8_t u8SPI_MEM_RX_Buffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -1013,6 +1014,10 @@ void setRAMRetriggerFlag(void){
     u8RAMRetriggerFlag = TRUE;
 }
 
+void setClockSyncFlag(void){
+    u8ClockSyncFlag = TRUE;
+}
+
 void writeRAM(memory_data_packet * mem_data, uint8_t u8OverdubFlag){
     int i;
     uint16_t * p_u8DataByte = &(mem_data->sample_1.u16XPosition);
@@ -1164,31 +1169,55 @@ void readRAM_DMA(memory_data_packet * mem_data){
             case LOOPING:
             case FLIP:
                 if(u8PlaybackDirection == FORWARD_PLAYBACK){
-                    u32RAMReadAddress += NUMBER_OF_DATA_BYTES;
-                    if(u32RAMReadAddress >= u32SequenceEndAddress){
+                    if(u8ClockSyncFlag == FALSE){
+                        u32RAMReadAddress += NUMBER_OF_DATA_BYTES;
+                        if(u32RAMReadAddress >= u32SequenceEndAddress){
+                            u32RAMReadAddress = RESET_RAM_ADDRESS;
+                        }
+                    }else{
                         u32RAMReadAddress = RESET_RAM_ADDRESS;
+                        u8ClockSyncFlag = FALSE;
                     }
                 }
                 else{
-                    u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
-                    if(u32RAMReadAddress == RESET_RAM_ADDRESS){
+                    if(u8ClockSyncFlag == FALSE){
+                        u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
+                        if(u32RAMReadAddress == RESET_RAM_ADDRESS){
+                            u32RAMReadAddress = u32SequenceEndAddress;
+                        }
+                    }else{
                         u32RAMReadAddress = u32SequenceEndAddress;
+                        u8ClockSyncFlag = FALSE;
                     }
                 }
                 break;
             case PENDULUM:
                 if(u8PlaybackDirection == FORWARD_PLAYBACK){
-                    u32RAMReadAddress += NUMBER_OF_DATA_BYTES;
-                    if(u32RAMReadAddress >= u32SequenceEndAddress){
+                    if(u8ClockSyncFlag == FALSE){
+                        u32RAMReadAddress += NUMBER_OF_DATA_BYTES;
+                        if(u32RAMReadAddress >= u32SequenceEndAddress){
+                            u8PlaybackDirection = REVERSE_PLAYBACK;
+                            setPlaybackDirection(u8PlaybackDirection);
+                        }
+                    }else{
+                        u32RAMReadAddress = u32SequenceEndAddress;
                         u8PlaybackDirection = REVERSE_PLAYBACK;
                         setPlaybackDirection(u8PlaybackDirection);
+                        u8ClockSyncFlag = FALSE;
                     }
                 }
                 else{
-                    u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
-                    if(u32RAMReadAddress == RESET_RAM_ADDRESS || u32RAMReadAddress > u32SequenceEndAddress){
-                        u8PlaybackDirection = FORWARD_PLAYBACK;
+                    if(u8ClockSyncFlag == FALSE){
+                        u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
+                        if(u32RAMReadAddress == RESET_RAM_ADDRESS || u32RAMReadAddress > u32SequenceEndAddress){
+                            u8PlaybackDirection = FORWARD_PLAYBACK;
+                            setPlaybackDirection(u8PlaybackDirection);
+                        }
+                    }else{
+                        u32RAMReadAddress = u32SequenceEndAddress;
+                        u8PlaybackDirection = REVERSE_PLAYBACK;
                         setPlaybackDirection(u8PlaybackDirection);
+                        u8ClockSyncFlag = FALSE;
                     }
                 }
                 break;
@@ -1197,17 +1226,19 @@ void readRAM_DMA(memory_data_packet * mem_data){
                 if(u8PlaybackDirection == FORWARD_PLAYBACK){
                     u32RAMReadAddress += NUMBER_OF_DATA_BYTES;
                     //Stop playback at the end.
-                    if(u32RAMReadAddress >= u32SequenceEndAddress){
+                    if(u32RAMReadAddress >= u32SequenceEndAddress || u8ClockSyncFlag == TRUE){
                         u32RAMReadAddress = RESET_RAM_ADDRESS;
                         setPlaybackRunStatus(FALSE);
+                        u8ClockSyncFlag = FALSE;
                     }
                 }
                 else{
                     u32RAMReadAddress -= NUMBER_OF_DATA_BYTES;
                     //Stop playback at the end.
-                    if(u32RAMReadAddress == RESET_RAM_ADDRESS){
+                    if(u32RAMReadAddress == RESET_RAM_ADDRESS || u8ClockSyncFlag == TRUE){
                         u32RAMReadAddress = u32SequenceEndAddress;
                         setPlaybackRunStatus(FALSE);
+                        u8ClockSyncFlag = FALSE;
                     }
                 }
                 break;
