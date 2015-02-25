@@ -41,7 +41,8 @@
 //TODO: Test - Turn off tap tempo when external recording is enabled.
 
 //TODO: Implement quantized speed changes when record is set to external.
-
+//TODO: Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
+// routine doesn't work.
 //TODO: Indicate entering and exiting time quantization.
 //TODO: Deal with clock sync during flash playback.
 //TODO: Deal with all the playback modes with the new clocks.
@@ -222,7 +223,7 @@ void runTapTempo(void);
 uint32_t calculateTapTempo(void);
 void resetMultiTapGestureDetection(void);
 uint8_t decodeMultiTapGestures(uint16_t u16TouchData);
-void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockFlag);
+void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockTrigger, uint8_t u8RecordTrigger);
 void handleZDecay(pos_and_gesture_data * pos_and_gesture_struct);
 void syncLoop(void);
 
@@ -375,8 +376,6 @@ void resetTapTempoMode(void){
         u32TapTempoArray[i] = 0;
     }
 }
-
-
 
 void runTapTempo(void){
     int i;
@@ -539,10 +538,16 @@ void regulateClockPlaybackSpeed(void){
 /*Time quantization
  * If an axis is time quantized, it only changes on a clock edge.
  */
-void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockFlag){
+void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockTrigger, uint8_t u8RecordTrigger){
     int i;
+    uint8_t u8ClockFlag = FALSE;
     uint16_t * p_u16CurrentPosition = &time_quantize_struct.u16XPosition;
     uint16_t * p_u16NewPosition = (uint16_t *) pos_and_gesture_struct;
+
+    if(u8TapTempoSetFlag == TRUE && u8ClockTrigger == TRUE
+       || (p_VectrData->u8Source[RECORD] == EXTERNAL && u8RecordTrigger == TRIGGER_WENT_HIGH)){
+        u8ClockFlag = TRUE;
+    }
 
     for(i=0;i<NUMBER_OF_OUTPUTS;i++){
         //If time quantization for that axis is on.
@@ -799,7 +804,6 @@ void MasterControlStateMachine(void){
 
             /*If hold is active, execute the hold behavior*/
             if(u8HoldState == ON){
-
                 holdHandler(&pos_and_gesture_struct, &pos_and_gesture_struct, &hold_position_struct);
 
                 //If the hand hold is active, decay the Z output.
@@ -818,39 +822,11 @@ void MasterControlStateMachine(void){
             /*Handle time quantization. If an output is time quantized, then
              * it only changes when we get a clock pulse.
              */
-            if(u8TapTempoSetFlag == TRUE && u8TapTempoModeActiveFlag == FALSE){
-
-                if(u8ClockTriggerFlag == TRUE){
-                   handleTimeQuantization(&pos_and_gesture_struct, TRUE);
-                    if(u8RecordingArmedFlag != ARMED){
-                        handleClock();
-                        u8ClockTriggerFlag = FALSE;
-                    }
-                }
-                else{
-                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
-                }
-            }
-            else if(p_VectrData->u8Source[RECORD] == EXTERNAL){
-                if(u8RecordTrigger == TRIGGER_WENT_HIGH) {
-                    handleTimeQuantization(&pos_and_gesture_struct, TRUE);
-                    handleClock();
-                }
-                else{
-                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
-                }
-            }
-
+            handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             slewPosition(&pos_and_gesture_struct);
-
             mutePosition(&pos_and_gesture_struct);
-
             linearizePosition(&pos_and_gesture_struct);
-
-            /*Implement scaling.*/
             scaleRange(&pos_and_gesture_struct);
-
-            /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
 
             /*Send the data out to the DAC.*/
@@ -907,6 +883,13 @@ void MasterControlStateMachine(void){
                         startNewRecording();
                         u8ClockTriggerFlag = FALSE;
                     }
+                }
+            }
+            else{//Recording not armed.
+                if((p_VectrData->u8Source[RECORD] == EXTERNAL && u8RecordTrigger == TRIGGER_WENT_HIGH)
+                    ||
+                   (u8TapTempoSetFlag == TRUE && u8TapTempoModeActiveFlag == FALSE && u8ClockTriggerFlag == TRUE)){
+                    handleClock();
                 }
             }
             break;
@@ -1010,26 +993,7 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            /*Handle time quantization. If an output is time quantized, then
-             * it only changes when we get a clock pulse.
-             */
-            if(u8TapTempoSetFlag == TRUE){
-                if(u8ClockTriggerFlag == TRUE){
-                   handleTimeQuantization(&pos_and_gesture_struct, TRUE);
-                }
-                else{
-                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
-                }
-            }
-            else if(p_VectrData->u8Source[RECORD] == EXTERNAL){
-                if(u8RecordTrigger == TRIGGER_WENT_HIGH) {
-                    handleTimeQuantization(&pos_and_gesture_struct, TRUE);
-                }
-                else{
-                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
-                }
-            }
-
+            handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             slewPosition(&pos_and_gesture_struct);
             xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
             scaleRange(&pos_and_gesture_struct);
@@ -1406,7 +1370,7 @@ void MasterControlStateMachine(void){
                      */
                     if(u8PlaybackRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                   //         handleClock();
+                            handleClock();
                             u8RecordTrigger = NO_TRIGGER;
                        //     regulateClockPlaybackSpeed();//Keep playback speed running.
                         }
@@ -1437,10 +1401,8 @@ void MasterControlStateMachine(void){
                         handleClock();
                         u8ClockTriggerFlag = FALSE;
                     }
-                    
                 }
             }
-
             break;
         /*Overdubbing mode records over the existing recording.*/
         case OVERDUBBING:
@@ -2106,33 +2068,7 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
 
             //Playback is running. Run the clock
             setClockEnableFlag(TRUE);
-
-            /*Handle time quantization. If an output is time quantized, then
-             * it only changes when we get a clock pulse.
-             */
-            if(u8TapTempoSetFlag == TRUE){
-
-                if(u8ClockTriggerFlag == TRUE){
-                   handleTimeQuantization(&pos_and_gesture_struct, TRUE);
-                   handleClock();
-                    if(u8RecordingArmedFlag != ARMED){
-                        u8ClockTriggerFlag = FALSE;
-                    }
-                }
-                else{
-                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
-                }
-            }
-            else if(p_VectrData->u8Source[RECORD] == EXTERNAL){
-                if(u8RecordTrigger == TRIGGER_WENT_HIGH) {
-                    handleTimeQuantization(&pos_and_gesture_struct, TRUE);
-                    handleClock();
-                }
-                else{
-                    handleTimeQuantization(&pos_and_gesture_struct, FALSE);
-                }
-            }
-
+            handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             slewPosition(p_mem_pos_and_gesture_struct);
        }
        else{
