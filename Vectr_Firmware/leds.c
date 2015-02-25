@@ -411,7 +411,6 @@ uint8_t runPowerUpSequence(void){
         setBlueLEDBrightness(led_ordered_array[u8BlueLEDCount], HALF_BRIGHTNESS);
         u8BlueLEDCount++;
         if(u8BlueLEDCount == NUM_OF_BLUE_LEDS){
-            setRedLEDs(HALF_BRIGHTNESS);
             return 0;
         }
         u8PowerUpTimer = POWER_UP_TIMER_RESET;

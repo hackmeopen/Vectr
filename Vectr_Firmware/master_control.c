@@ -28,7 +28,6 @@
 //TODO: Test - Implement automatic speed tracking to playback.
 //TODO: Test - Make sure playback is smooth. There may be some sort of jumps.
 //TODO: Test - Second press during TRIGA external recording should be disregarded.
-
 //TODO: Test - Implement time quantization - Make a way to turn it on and off with gestures.
 //TODO: Test - Fix the switch blinking for when the record mode is internal
 //TODO: Test - Make Z output decay to zero when the hand is taken away.
@@ -36,14 +35,17 @@
 //TODO: Test - Add the new clock sync to muting, sequencing.
 //TODO: Test - Make playback start back at the beginning when playback is restarted from live play mode.
 //TODO: Test - ???Make sure we're not counting clocks during hold in external recording mode.
+//TODO: Test - Tap tempo recording starts one clock late.
+//TODO: Test - Tap tempo needs to let me keep hitting the switch.
+//TODO: Test - Different clock sequence lengths in all modes. especially with the clock sync stuff.
+//TODO: Test - Turn off tap tempo when external recording is enabled.
 
-//TODO: Tap tempo recording starts one clock late.
-//TODO: Tap tempo needs to let me keep hitting the switch.
-//TODO: Implement tap tempo TRIGA recording
 //TODO: Implement quantized speed changes when record is set to external.
+
 //TODO: Indicate entering and exiting time quantization.
-//TODO: Turn off tap tempo when external recording is enabled.
+//TODO: Deal with clock sync during flash playback.
 //TODO: Deal with all the playback modes with the new clocks.
+//TODO: Keep the clock sync'ed during overdub recording?
 
 //TODO: Handle record clock during air scratching.
 //TODO: Implement tap tempo during playback.
@@ -138,7 +140,7 @@ enum{
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
 #define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
-#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  32
+#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  64
 
 static uint8_t u8CurrentInputClockCount;
 static uint8_t u8ClockLengthOfRecordedSequence;
@@ -222,6 +224,7 @@ void resetMultiTapGestureDetection(void);
 uint8_t decodeMultiTapGestures(uint16_t u16TouchData);
 void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockFlag);
 void handleZDecay(pos_and_gesture_data * pos_and_gesture_struct);
+void syncLoop(void);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -269,7 +272,7 @@ uint8_t handleClock(void){
         u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getRecClockCount();
         resetRecClockCount();
         u8CurrentClockArrayIndex++;
-        if(u8CurrentClockArrayIndex > LENGTH_OF_INPUT_CLOCK_ARRAY){
+        if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
             u8CurrentClockArrayIndex = 0;
         }
 
@@ -279,9 +282,19 @@ uint8_t handleClock(void){
     }
 
     /*Blink the switch LED to indicate incoming record clock signals.*/
-    if(u8OperatingMode == RECORDING
-       || (u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
-            && u8HandPresentFlag == TRUE)){
+    if(u8OperatingMode == RECORDING){
+
+        setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+
+        /*Keep track of the number of record input clocks. Know where we are in the loop
+         and cycle the loop back around in playback and overdubbing.*/
+        u8CurrentInputClockCount++;
+
+        //Add 1 because we want to end on the 1
+        u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+
+    }else if(u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
+            && u8HandPresentFlag == TRUE){
 
         if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
@@ -466,9 +479,13 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
     int i;
     uint32_t u32Sum = 0;
     uint32_t u32Result = 0;
+    uint32_t u32LongestTicks = 0;
 
     if(u8ClockLengthOfRecordedSequence > LENGTH_OF_INPUT_CLOCK_ARRAY){
         for(i=0;i<LENGTH_OF_INPUT_CLOCK_ARRAY;i++){
+            if(u32NumTicksBetweenClocksArray[i] > u32LongestTicks){
+                u32LongestTicks = u32NumTicksBetweenClocksArray[i];
+            }
             u32Sum += u32NumTicksBetweenClocksArray[i];
         }
         u32Result = u32Sum >> LOG_LENGTH_INPUT_CLOCK_ARRAY;
@@ -481,7 +498,7 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
     }
 
     u32AvgNumTicksBetweenClocks = u32Result;
-    u32ExpectedNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
+    u32ExpectedNumTicksBetweenClocks = u32LongestTicks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
 
     return u32AvgNumTicksBetweenClocks;
 }
@@ -577,8 +594,8 @@ void MasterControlInit(void){
 
 #define LENGTH_OF_LOG  500
 uint16_t  u16LogIndex;
-uint16_t u16LogXValues[LENGTH_OF_LOG];
-uint16_t u16LogIncomingXValues[LENGTH_OF_LOG];
+uint16_t u16LogValues[LENGTH_OF_LOG];
+
 
 
 /*  Implementing the internally regulated clock + getting the LED blinking during internally sync'ed recording.
@@ -593,6 +610,8 @@ void MasterControlStateMachine(void){
 
     static pos_and_gesture_data last_position_data;
 
+
+    uint16_t u16NumRecordClocks;
     uint8_t u8MessageReceivedFlag = FALSE;
     uint16_t u16TouchData;
     uint16_t u16AirwheelData;
@@ -625,8 +644,6 @@ void MasterControlStateMachine(void){
         pos_and_gesture_struct.u16YPosition = last_position_data.u16YPosition;
         pos_and_gesture_struct.u16ZPosition = last_position_data.u16ZPosition;
     }
-
-    u16LogIncomingXValues[u16LogIndex] = pos_and_gesture_struct.u16XPosition;
 
     //Run menu mode if it's active. The encoder is either used for menu mode or for
     //live interactions. Can't be both at the same time.
@@ -835,14 +852,6 @@ void MasterControlStateMachine(void){
 
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
-
-            /*Time Quantization*/
-
-            u16LogXValues[u16LogIndex++] = pos_and_gesture_struct.u16XPosition;
-
-            if(u16LogIndex >= LENGTH_OF_LOG){
-                u16LogIndex = 0;
-            }
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
@@ -1098,7 +1107,6 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            /**/
             if(u8RecordingArmedFlag == ARMED){
                 if(p_VectrData->u8Source[RECORD] == EXTERNAL){
                    if(u8RecordTrigger == TRIGGER_WENT_HIGH){/*If we received the record trigger.*/
@@ -1237,7 +1245,15 @@ void MasterControlStateMachine(void){
 
                 if(u8HoldState != ON){
                     if(u16AirwheelData != u16LastAirWheelData){
-                        if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
+
+                         u16LogValues[u16LogIndex++] = u16AirwheelData;
+
+                        if(u16LogIndex >= LENGTH_OF_LOG){
+                            u16LogIndex = 0;
+                        }
+
+                        //if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
+                         if(u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
                             i16AirWheelChange = u16AirwheelData - u16LastAirWheelData;
 
                             //If the data decremented past zero, the new data minus the old will be large.
@@ -1250,9 +1266,22 @@ void MasterControlStateMachine(void){
                                 i16AirWheelChange = u16AirwheelData + (256 - u16LastAirWheelData);
                             }
 
-                            adjustSpeedTable(i16AirWheelChange);
+                            if(p_VectrData->u8Source[RECORD] == SWITCH){
+                                adjustSpeedTable(i16AirWheelChange);
+                                u16LastAirWheelData = u16AirwheelData;
+                            }
+                            else{
+                                //Externally clocked. Work in binary increments.
+                                if(i16AirWheelChange >= 16){
+                                    u16LastAirWheelData = u16AirwheelData;
+                                }else if(i16AirWheelChange <= -16){
+                                    u16LastAirWheelData = u16AirwheelData;
+                                }
+                            }
                         }
-                        u16LastAirWheelData = u16AirwheelData;
+                        else{
+                            u16LastAirWheelData = u16AirwheelData;
+                        }
                     }
                 }else{
                     //Don't adjust speed during a hold
@@ -1377,15 +1406,17 @@ void MasterControlStateMachine(void){
                      */
                     if(u8PlaybackRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
-                            handleClock();
-                            regulateClockPlaybackSpeed();//Keep playback speed running.
+                   //         handleClock();
+                            u8RecordTrigger = NO_TRIGGER;
+                       //     regulateClockPlaybackSpeed();//Keep playback speed running.
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
                              * the expected number of ticks between clocks.
                              */
-                            if(getRecClockCount() > u32ExpectedNumTicksBetweenClocks){
-                                setPlaybackRunStatus(PAUSED);
+                            u16NumRecordClocks = getRecClockCount();
+                            if(u16NumRecordClocks > u32ExpectedNumTicksBetweenClocks){
+                               // setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }
@@ -3079,9 +3110,7 @@ void startNewRecording(void){
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
 
-    if(p_VectrData->u8Source[RECORD] == SWITCH && u8TapTempoSetFlag == FALSE){
-        setSwitchLEDState(SWITCH_LED_RED_BLINKING);
-    }
+    setSwitchLEDState(SWITCH_LED_RED_BLINKING); 
 
     /*In external record mode, the clock must be handled. We start running the clock
      * because we need to know how long it is between clock edges.*/
@@ -4143,6 +4172,10 @@ uint8_t setCurrentSource(uint8_t u8Parameter, uint8_t u8NewSetting){
     }
 
     p_VectrData->u8Source[u8Parameter] = u8NewSetting;
+
+    if(u8Parameter == RECORD){
+        u8TapTempoSetFlag = FALSE;
+    }
 
     return u8NewSetting;
 }
