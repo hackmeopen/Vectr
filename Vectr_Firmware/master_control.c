@@ -39,17 +39,16 @@
 //TODO: Test - Tap tempo needs to let me keep hitting the switch.
 //TODO: Test - Different clock sequence lengths in all modes. especially with the clock sync stuff.
 //TODO: Test - Turn off tap tempo when external recording is enabled.
+//TODO: Test - Implement quantized speed changes when record is set to external.
 
-//TODO: Implement quantized speed changes when record is set to external.
 //TODO: Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
 // routine doesn't work.
+
 //TODO: Indicate entering and exiting time quantization.
 //TODO: Deal with clock sync during flash playback.
 //TODO: Deal with all the playback modes with the new clocks.
 //TODO: Keep the clock sync'ed during overdub recording?
-
 //TODO: Handle record clock during air scratching.
-//TODO: Implement tap tempo during playback.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -128,6 +127,10 @@ static uint8_t u8TapTempoArrayIndex;
 static uint8_t u8TapTempoSetFlag;
 static uint8_t u8InitTapTempoFlag;
 static uint8_t u8ClockTriggerFlag;//Set by the Timer clock routine in app.c TIM3 to inform that the clock expired.
+
+static uint32_t u32NewPlaybackSpeedClocked;
+static uint8_t u8NewPlaybackSpeedClockedFlag;
+static uint32_t u32NewClockClicks;
 
 static uint8_t u8MultiTapTriggerTimer;
 #define MULTI_TAP_TIMER_RESET   50
@@ -226,6 +229,7 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData);
 void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8_t u8ClockTrigger, uint8_t u8RecordTrigger);
 void handleZDecay(pos_and_gesture_data * pos_and_gesture_struct);
 void syncLoop(void);
+void setAvgNumClicksBetweenClocks(uint32_t u32NewNumClicks);
 
 /*Reset all the variables related to the input clock measurements.*/
 void resetInputClockHandling(void){
@@ -313,6 +317,7 @@ uint8_t handleClock(void){
     }
     else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
         /*This state is for playback or for overdubbing when playback isn't running.*/
+
         if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }else{
@@ -323,7 +328,18 @@ uint8_t handleClock(void){
         /* Calculate the running average of time between clocks.
          * If the result has changed, speed up or slow down the playback.
          */
-        calculateAvgNumClicksBetweenClocks();
+        if(u8NewPlaybackSpeedClockedFlag != TRUE){
+
+            calculateAvgNumClicksBetweenClocks();
+        }else{
+            //The speed changed. Need to update.
+            u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
+            u8NewPlaybackSpeedClockedFlag = FALSE;
+            setAvgNumClicksBetweenClocks(u32NewClockClicks);
+            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            RESET_SAMPLE_TIMER;
+            calculateClockTimer(u32PlaybackSpeed);
+        }
 
         u8CurrentInputClockCount++;
 
@@ -467,6 +483,17 @@ uint32_t calculateTapTempo(void){
 
     u32Result /= LENGTH_OF_TAP_TEMPO_ARRAY;
     return u32Result;
+}
+
+void setAvgNumClicksBetweenClocks(uint32_t u32NewNumClicks){
+    int i;
+    for(i=0;i<LENGTH_OF_INPUT_CLOCK_ARRAY;i++){
+        u32NumTicksBetweenClocksArray[i] = u32NewNumClicks;
+    }
+
+    u32AvgNumTicksBetweenClocks = u32NewNumClicks;
+    u32TargetNumTicksBetweenClocks = u32NewNumClicks;
+    u32ExpectedNumTicksBetweenClocks = u32NewNumClicks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
 }
 
 /* Calculate the average number of timer ticks between clock edges. If the recorded sequence
@@ -1236,10 +1263,18 @@ void MasterControlStateMachine(void){
                             }
                             else{
                                 //Externally clocked. Work in binary increments.
-                                if(i16AirWheelChange >= 16){
+                                if(i16AirWheelChange >= 32){
+                                    //Multiply the current speed by 2.
+                                    u32NewPlaybackSpeedClocked = u32PlaybackSpeed>>1;//Lower number makes the clock faster
                                     u16LastAirWheelData = u16AirwheelData;
-                                }else if(i16AirWheelChange <= -16){
+                                    u8NewPlaybackSpeedClockedFlag = TRUE;
+                                    u32NewClockClicks = u32AvgNumTicksBetweenClocks<<1;
+                                }else if(i16AirWheelChange <= -32){
+                                    //Divide the current speed by 2.
+                                    u32NewPlaybackSpeedClocked = u32PlaybackSpeed<<1;
                                     u16LastAirWheelData = u16AirwheelData;
+                                    u8NewPlaybackSpeedClockedFlag = TRUE;
+                                    u32NewClockClicks = u32AvgNumTicksBetweenClocks>>1;
                                 }
                             }
                         }
@@ -1372,7 +1407,7 @@ void MasterControlStateMachine(void){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleClock();
                             u8RecordTrigger = NO_TRIGGER;
-                       //     regulateClockPlaybackSpeed();//Keep playback speed running.
+                            regulateClockPlaybackSpeed();//Keep playback speed running.
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
@@ -1380,7 +1415,7 @@ void MasterControlStateMachine(void){
                              */
                             u16NumRecordClocks = getRecClockCount();
                             if(u16NumRecordClocks > u32ExpectedNumTicksBetweenClocks){
-                               // setPlaybackRunStatus(PAUSED);
+                             setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }
