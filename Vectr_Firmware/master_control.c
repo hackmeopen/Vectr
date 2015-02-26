@@ -24,7 +24,6 @@
 //TODO: Test - Make it so an encoder switch press when the record clock is stopped resets the loop.
 //TODO: Test - Fix the behavior to go to hold or live playback, simple turns.
 //TODO: Test - what happens when multiple switch presses are made during external sync'ed recording
-//TODO: Test - switch blinking and synchronization during SCRATCH mode.
 //TODO: Test - Implement automatic speed tracking to playback.
 //TODO: Test - Make sure playback is smooth. There may be some sort of jumps.
 //TODO: Test - Second press during TRIGA external recording should be disregarded.
@@ -34,21 +33,21 @@
 //TODO: Test - Implement the hand gate output "being recorded" - Fake the playback.
 //TODO: Test - Add the new clock sync to muting, sequencing.
 //TODO: Test - Make playback start back at the beginning when playback is restarted from live play mode.
-//TODO: Test - ???Make sure we're not counting clocks during hold in external recording mode.
 //TODO: Test - Tap tempo recording starts one clock late.
 //TODO: Test - Tap tempo needs to let me keep hitting the switch.
 //TODO: Test - Different clock sequence lengths in all modes. especially with the clock sync stuff.
 //TODO: Test - Turn off tap tempo when external recording is enabled.
 //TODO: Test - Implement quantized speed changes when record is set to external.
-
-//TODO: Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
+//TODO: Test - Deal with all the playback modes with the new clocks.
+//TODO: Test - Indicate entering and exiting time quantization.
+//TODO: Test - Deal with clock sync during flash playback.
+//TODO: Test- Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
 // routine doesn't work.
 
-//TODO: Indicate entering and exiting time quantization.
-//TODO: Deal with clock sync during flash playback.
-//TODO: Deal with all the playback modes with the new clocks.
+//TODO: Figure out what to do with clocks during hold. Test and see what happens.
 //TODO: Keep the clock sync'ed during overdub recording?
 //TODO: Handle record clock during air scratching.
+//TODO: Deal with gated modes and clock.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -340,12 +339,13 @@ uint8_t handleClock(void){
             RESET_SAMPLE_TIMER;
             calculateClockTimer(u32PlaybackSpeed);
         }
-
+        
         u8CurrentInputClockCount++;
 
         if(u8CurrentInputClockCount == u8ClockLengthOfRecordedSequence){
             u8CurrentInputClockCount = 0;
         }
+        
     }
     else{
         //This mode is for Live Play Mode when tap tempo has been activated.
@@ -442,10 +442,10 @@ void runTapTempo(void){
             u8TimeOutTimer = 100;
             u8TapTempoArrayIndex++;
             u8CurrentInputClockCount++;
-            resetClockTimer();
+         //   resetClockTimer();
             setClockTimerTriggerCount(calculateTapTempo());
-            SET_LOOP_SYNC_OUT;
-            setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+//            SET_LOOP_SYNC_OUT;
+//            setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
         }
         
         u8TapTempoKeyPressFlag = FALSE;
@@ -1432,7 +1432,9 @@ void MasterControlStateMachine(void){
                     }
                 }
                 else{
-                    if(u8ClockTriggerFlag == TRUE){
+                    if((p_VectrData->u8Source[RECORD] == EXTERNAL && u8RecordTrigger == TRIGGER_WENT_HIGH)
+                    ||
+                   (u8TapTempoSetFlag == TRUE && u8TapTempoModeActiveFlag == FALSE && u8ClockTriggerFlag == TRUE)){
                         handleClock();
                         u8ClockTriggerFlag = FALSE;
                     }
@@ -3797,15 +3799,17 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
             break;
         case FIRST_TAP_TEMPO_GESTURE_RECEIVED:
             if(u16TouchData == MGC3130_TAP_LEFT){
-                if(u8TapTempoModeActiveFlag == FALSE){
-                    u8TapTempoModeActiveFlag = TRUE;
-                    //Turn on the Red switch LED
-                    setSwitchLEDState(SWITCH_LED_RED);
-                    resetTapTempoMode();
-                }
-                else{
-                    u8TapTempoModeActiveFlag = FALSE;
-                    setSwitchLEDState(SWITCH_LED_OFF);
+                if(p_VectrData->u8Source[RECORD] == SWITCH){
+                    if(u8TapTempoModeActiveFlag == FALSE){
+                        u8TapTempoModeActiveFlag = TRUE;
+                        //Turn on the Red switch LED
+                        setSwitchLEDState(SWITCH_LED_RED);
+                        resetTapTempoMode();
+                    }
+                    else{
+                        u8TapTempoModeActiveFlag = FALSE;
+                        setSwitchLEDState(SWITCH_LED_OFF);
+                    }
                 }
             }
             break;
@@ -3814,18 +3818,21 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
                 case MGC3130_TAP_LEFT:
                     //Toggle X time quantization.
                     VectrData.u8TimeQuantization[X_OUTPUT_INDEX] ^= 0x01;
+                    setLeftLEDs(MAX_BRIGHTNESS, ON);
                     u8MultiTapTriggerTimer = 0;
                     resetMultiTapGestureDetection();
                     break;
                 case MGC3130_TAP_TOP:
                     //Toggle Y time quantization.
                     VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] ^= 0x01;
+                    setTopLEDs(MAX_BRIGHTNESS, ON);
                     u8MultiTapTriggerTimer = 0;
                     resetMultiTapGestureDetection();
                     break;
                 case MGC3130_TAP_RIGHT:
                     //Toggle Z time quantization.
                     VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] ^= 0x01;
+                    setRightLEDs(MAX_BRIGHTNESS, ON);
                     u8MultiTapTriggerTimer = 0;
                     resetMultiTapGestureDetection();
                     break;
