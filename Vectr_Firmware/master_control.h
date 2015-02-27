@@ -333,6 +333,7 @@ void setCurrentRecordClocks(uint8_t u8NewSetting);
 uint8_t getRecordSource(void);
 void setClockTriggerFlag(void);
 uint8_t getTapTempoSetFlag(void);
+uint8_t getTimeQuantizationStatus(uint8_t u8Index);
 
 
 #endif	/* MASTER_CONTROL_H */

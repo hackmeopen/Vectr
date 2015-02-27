@@ -181,6 +181,7 @@ void ledStateMachine(void){
             if(xQueueReceive(xLEDQueue, &pos_and_gesture_struct, 0) &&
             u8AlternateFuncFlag == FALSE && u8IndicateErrorFlag == FALSE){
                 convert_position_to_leds(&pos_and_gesture_struct);
+                indicateTimeQuantization();
             }
             u8LEDState = BLUE_GROUP1;
             break;
@@ -239,6 +240,18 @@ void ledStateMachine(void){
 
 
     vTaskDelay(39);
+}
+
+void indicateTimeQuantization(void){
+    int i;
+    uint8_t u8Index;
+
+    for(i=0;i<NUMBER_OF_OUTPUTS;i++){
+        u8Index = LED20-i;
+        if(getTimeQuantizationStatus(i) && u16BlueLEDDutyCycleBuffer[u8Index] < HALF_BRIGHTNESS){
+            u16BlueLEDDutyCycleBuffer[u8Index] = HALF_BRIGHTNESS;
+        }
+    }
 }
 
 void runIndicateOverdubMode(void){
@@ -748,8 +761,8 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
                 }
             }else{
             u16BlueLEDDutyCycleBuffer[u8_index] = 0;
+            }
         }
-    }
     }
     else{
             for(u8_index = 0; u8_index < NUM_OF_BLUE_LEDS; u8_index++){

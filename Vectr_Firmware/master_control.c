@@ -49,6 +49,8 @@
 //TODO: Handle record clock during air scratching.
 //TODO: Deal with gated modes and clock.
 //TODO: Test what happens when the number of clocks is changed during playback and such.
+//TODO: Work on the quantization. Make sure values are correct.
+//TODO: Change major to minor in the quantization.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -2886,6 +2888,10 @@ void setPlaybackDirection(uint8_t u8NewDirection){
     if(getStoredSequenceLocationFlag() == STORED_IN_FLASH && (u8OldDirection != u8NewDirection)){
         changeFlashPlaybackDirection(u8NewDirection);
     }
+}
+
+uint8_t getTimeQuantizationStatus(uint8_t u8Index){
+    return p_VectrData->u8TimeQuantization[u8Index];
 }
 
 uint8_t getPlaybackMode(void){
