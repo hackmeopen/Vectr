@@ -48,6 +48,7 @@
 //TODO: Keep the clock sync'ed during overdub recording?
 //TODO: Handle record clock during air scratching.
 //TODO: Deal with gated modes and clock.
+//TODO: Test what happens when the number of clocks is changed during playback and such.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -841,6 +842,8 @@ void MasterControlStateMachine(void){
                 }
             }
 
+            handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
+
             /*If menu mode is active, the menu controls the LEDs.*/
             if(u8MenuModeFlag == FALSE){
                 xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
@@ -849,7 +852,7 @@ void MasterControlStateMachine(void){
             /*Handle time quantization. If an output is time quantized, then
              * it only changes when we get a clock pulse.
              */
-            handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
+            
             slewPosition(&pos_and_gesture_struct);
             mutePosition(&pos_and_gesture_struct);
             linearizePosition(&pos_and_gesture_struct);
@@ -917,6 +920,7 @@ void MasterControlStateMachine(void){
                     ||
                    (u8TapTempoSetFlag == TRUE && u8TapTempoModeActiveFlag == FALSE && u8ClockTriggerFlag == TRUE)){
                     handleClock();
+                    u8ClockTriggerFlag = FALSE;
                 }
             }
             break;
@@ -1570,7 +1574,8 @@ void MasterControlStateMachine(void){
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for OVERDUB
                         xQueueSend(xRAMWriteQueue, &overdubBuffer, 0);
                     }
-                    
+
+                    handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
                     slewPosition(p_mem_pos_and_gesture_struct);
                     xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
                     scaleRange(p_mem_pos_and_gesture_struct);
@@ -1584,6 +1589,7 @@ void MasterControlStateMachine(void){
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for READ
                     }
 
+                    handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
                     slewPosition(p_mem_pos_and_gesture_struct);
                     scaleRange(p_mem_pos_and_gesture_struct);
                     /*Quantize the position.*/
@@ -2105,7 +2111,7 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
 
             //Playback is running. Run the clock
             setClockEnableFlag(TRUE);
-            handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
+            handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             slewPosition(p_mem_pos_and_gesture_struct);
        }
        else{
@@ -3779,26 +3785,24 @@ void resetMultiTapGestureDetection(void){
 
 uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
 
+
+
     switch(u8decodeMultiTapGestureState){
         case WAITING_FOR_GESTURE:
-            switch(u16TouchData){
-                case MGC3130_TAP_RIGHT:
-                    //Start the timer to look for the left tap.
-                    u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
-                    u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
-                    break;
-                case MGC3130_TAP_BOTTOM:
-                    //Start the timer to look for the left tap.
-                    u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
-                    u8decodeMultiTapGestureState = FIRST_TIME_QUANT_GESTURE_RECEIVED;
-                    break;
-                default:
-                    break;
+
+            if(u16TouchData & MGC3130_TAP_RIGHT){
+                //Start the timer to look for the left tap.
+                u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
+                u8decodeMultiTapGestureState = FIRST_TAP_TEMPO_GESTURE_RECEIVED;
+            }else if(u16TouchData & MGC3130_TAP_BOTTOM){
+                //Start the timer to look for the left tap.
+                u8MultiTapTriggerTimer = MULTI_TAP_TIMER_RESET;
+                u8decodeMultiTapGestureState = FIRST_TIME_QUANT_GESTURE_RECEIVED;
             }
 
             break;
         case FIRST_TAP_TEMPO_GESTURE_RECEIVED:
-            if(u16TouchData == MGC3130_TAP_LEFT){
+            if(u16TouchData & MGC3130_TAP_LEFT){
                 if(p_VectrData->u8Source[RECORD] == SWITCH){
                     if(u8TapTempoModeActiveFlag == FALSE){
                         u8TapTempoModeActiveFlag = TRUE;
@@ -3814,30 +3818,29 @@ uint8_t decodeMultiTapGestures(uint16_t u16TouchData){
             }
             break;
         case FIRST_TIME_QUANT_GESTURE_RECEIVED:
-            switch(u16TouchData){
-                case MGC3130_TAP_LEFT:
-                    //Toggle X time quantization.
-                    VectrData.u8TimeQuantization[X_OUTPUT_INDEX] ^= 0x01;
-                    setLeftLEDs(MAX_BRIGHTNESS, ON);
-                    u8MultiTapTriggerTimer = 0;
-                    resetMultiTapGestureDetection();
-                    break;
-                case MGC3130_TAP_TOP:
-                    //Toggle Y time quantization.
-                    VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] ^= 0x01;
-                    setTopLEDs(MAX_BRIGHTNESS, ON);
-                    u8MultiTapTriggerTimer = 0;
-                    resetMultiTapGestureDetection();
-                    break;
-                case MGC3130_TAP_RIGHT:
-                    //Toggle Z time quantization.
-                    VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] ^= 0x01;
-                    setRightLEDs(MAX_BRIGHTNESS, ON);
-                    u8MultiTapTriggerTimer = 0;
-                    resetMultiTapGestureDetection();
-                    break;
-                default:
-                    break;
+            if(u16TouchData & MGC3130_TAP_LEFT){
+                //Toggle X time quantization.
+                VectrData.u8TimeQuantization[X_OUTPUT_INDEX] ^= 0x01;
+                setLeftLEDs(MAX_BRIGHTNESS, ON);
+                u8MultiTapTriggerTimer = 0;
+                resetMultiTapGestureDetection();
+                LEDIndicateError();//Temporary indication
+            }
+            else if(u16TouchData & MGC3130_TAP_TOP){
+                //Toggle Y time quantization.
+                VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] ^= 0x01;
+                setTopLEDs(MAX_BRIGHTNESS, ON);
+                u8MultiTapTriggerTimer = 0;
+                resetMultiTapGestureDetection();
+                LEDIndicateError();//Temporary indication
+            }
+            else if(u16TouchData & MGC3130_TAP_RIGHT){
+                //Toggle Z time quantization.
+                VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] ^= 0x01;
+                setRightLEDs(MAX_BRIGHTNESS, ON);
+                u8MultiTapTriggerTimer = 0;
+                resetMultiTapGestureDetection();
+                LEDIndicateError();//Temporary indication
             }
             break;
         default:
