@@ -334,6 +334,7 @@ uint8_t getRecordSource(void);
 void setClockTriggerFlag(void);
 uint8_t getTapTempoSetFlag(void);
 uint8_t getTimeQuantizationStatus(uint8_t u8Index);
+uint8_t getOverdubActiveFlag(void);
 
 
 #endif	/* MASTER_CONTROL_H */

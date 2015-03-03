@@ -39,10 +39,13 @@
 //TODO: Test - Turn off tap tempo when external recording is enabled.
 //TODO: Test - Implement quantized speed changes when record is set to external.
 //TODO: Test - Deal with all the playback modes with the new clocks.
-//TODO: Test - Indicate entering and exiting time quantization.
+
 //TODO: Test - Deal with clock sync during flash playback.
 //TODO: Test- Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
 // routine doesn't work.
+
+//TODO: Indicate time quantization.
+//TODO: Z decay not working in overdub.
 
 //TODO: Figure out what to do with clocks during hold. Test and see what happens.
 //TODO: Keep the clock sync'ed during overdub recording?
@@ -51,6 +54,7 @@
 //TODO: Test what happens when the number of clocks is changed during playback and such.
 //TODO: Work on the quantization. Make sure values are correct.
 //TODO: Change major to minor in the quantization.
+//TODO: Hand Gate not working in overdub
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -206,7 +210,7 @@ void finishRecording(void);
 void setHoldPosition(pos_and_gesture_data * p_pos_and_gesture_struct);
 void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct);
 void linearizePosition(pos_and_gesture_data * p_pos_and_gesture_struct);
-void gateHandler(void);
+void gateHandler(pos_and_gesture_data * p_pos_and_gesture_struct);
 void holdHandler(pos_and_gesture_data * p_position_data_struct, pos_and_gesture_data * p_memory_data_struct,
 pos_and_gesture_data * p_hold_data_struct);
 uint16_t scaleBinarySearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
@@ -806,8 +810,7 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            //Handle the gate output
-            gateHandler();
+            
 
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
                 u8HoldActivationFlag = HOLD_ACTIVATE;
@@ -856,6 +859,7 @@ void MasterControlStateMachine(void){
              */
             
             slewPosition(&pos_and_gesture_struct);
+            gateHandler(&pos_and_gesture_struct);
             mutePosition(&pos_and_gesture_struct);
             linearizePosition(&pos_and_gesture_struct);
             scaleRange(&pos_and_gesture_struct);
@@ -985,9 +989,6 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            //Handle the gate output
-            gateHandler();
-
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
                 u8HoldActivationFlag = HOLD_ACTIVATE;
                 u8HandHoldFlag =  TRUE;
@@ -1028,6 +1029,7 @@ void MasterControlStateMachine(void){
 
             handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             slewPosition(&pos_and_gesture_struct);
+            gateHandler(&pos_and_gesture_struct);
             xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
             scaleRange(&pos_and_gesture_struct);
             /*Quantize the position.*/
@@ -1438,9 +1440,7 @@ void MasterControlStateMachine(void){
                     }
                 }
                 else{
-                    if((p_VectrData->u8Source[RECORD] == EXTERNAL && u8RecordTrigger == TRIGGER_WENT_HIGH)
-                    ||
-                   (u8TapTempoSetFlag == TRUE && u8TapTempoModeActiveFlag == FALSE && u8ClockTriggerFlag == TRUE)){
+                    if((u8TapTempoModeActiveFlag == FALSE && u8ClockTriggerFlag == TRUE)){
                         handleClock();
                         u8ClockTriggerFlag = FALSE;
                     }
@@ -1504,10 +1504,6 @@ void MasterControlStateMachine(void){
                         indicateActiveAxes(OVERDUB);
                     }
                 }
-            }else{
-                pos_and_gesture_struct.u16XPosition = p_VectrData->u16CurrentXPosition;
-                pos_and_gesture_struct.u16YPosition = p_VectrData->u16CurrentYPosition;
-                pos_and_gesture_struct.u16ZPosition = p_VectrData->u16CurrentZPosition;
             }
 
             /*Overdub running is like playback running. It's whether or not
@@ -1520,18 +1516,6 @@ void MasterControlStateMachine(void){
                 if(u8BufferDataCount == 0){
 
                     xQueueReceive(xRAMReadQueue, &memBuffer, 0);
-
-                    if(p_VectrData->u8PlaybackMode != PENDULUM){
-                        if(getRAMReadAddress() == 0){
-                            setResetFlag();
-                        }
-                    }
-                    else{
-                        if(getRAMReadAddress() == 0 || getRAMReadAddress() == getEndOfSequenceAddress()){
-                            setResetFlag();
-                        }
-                    }
-
                     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
                     p_overdub_pos_and_gesture_struct = &overdubBuffer.sample_1;
                     u8BufferDataCount++;
@@ -1544,9 +1528,10 @@ void MasterControlStateMachine(void){
 
                 /*This overdubbing works like a punch in/punchout except the punch in event
                  is the hand being present and the punch out is when the hand leaves. */
-                if(Flags.u8OverdubActiveFlag == TRUE && u8HandPresentFlag == TRUE){
+                if(Flags.u8OverdubActiveFlag == TRUE 
+                   && (u8HandPresentFlag == TRUE || pos_and_gesture_struct.u16ZPosition > 0)){
                     //Overdub the axes with overdub active and for the others write back the accessed data
-                    if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1){
+                    if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1 && u8HandPresentFlag == TRUE){
                         p_mem_pos_and_gesture_struct->u16XPosition = pos_and_gesture_struct.u16XPosition;
                         p_overdub_pos_and_gesture_struct->u16XPosition = pos_and_gesture_struct.u16XPosition;
                     }
@@ -1554,7 +1539,7 @@ void MasterControlStateMachine(void){
                        p_overdub_pos_and_gesture_struct->u16XPosition =  p_mem_pos_and_gesture_struct->u16XPosition;
                     }
 
-                    if(p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] == 1){
+                    if(p_VectrData->u8OverdubStatus[Y_OUTPUT_INDEX] == 1 && u8HandPresentFlag == TRUE){
                         p_mem_pos_and_gesture_struct->u16YPosition = pos_and_gesture_struct.u16YPosition;
                         p_overdub_pos_and_gesture_struct->u16YPosition = pos_and_gesture_struct.u16YPosition;
                     }
@@ -1563,6 +1548,11 @@ void MasterControlStateMachine(void){
                     }
 
                     if(p_VectrData->u8OverdubStatus[Z_OUTPUT_INDEX] == 1){
+                        if(u8HandPresentFlag == FALSE){
+                            handleZDecay(&pos_and_gesture_struct);
+                            last_position_data.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+                        }
+
                         p_mem_pos_and_gesture_struct->u16ZPosition = pos_and_gesture_struct.u16ZPosition;
                         p_overdub_pos_and_gesture_struct->u16ZPosition = pos_and_gesture_struct.u16ZPosition;
                     }
@@ -1580,6 +1570,7 @@ void MasterControlStateMachine(void){
                     handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
                     slewPosition(p_mem_pos_and_gesture_struct);
                     xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+                    gateHandler(p_mem_pos_and_gesture_struct);
                     scaleRange(p_mem_pos_and_gesture_struct);
                     /*Quantize the position.*/
                     quantizePosition(p_mem_pos_and_gesture_struct);
@@ -1593,13 +1584,15 @@ void MasterControlStateMachine(void){
 
                     handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
                     slewPosition(p_mem_pos_and_gesture_struct);
+                    if(Flags.u8OverdubActiveFlag == TRUE){
+                        xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+                    }
+                    gateHandler(p_mem_pos_and_gesture_struct);
                     scaleRange(p_mem_pos_and_gesture_struct);
                     /*Quantize the position.*/
                     quantizePosition(p_mem_pos_and_gesture_struct);
                     xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
-                    if(Flags.u8OverdubActiveFlag == TRUE){
-                        xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
-                    }
+                    
                 }
             }
 
@@ -2037,7 +2030,7 @@ void defaultSettings(void){
     VectrData.u8Source[RECORD] = SWITCH;
     VectrData.u8Source[PLAY] = SWITCH;
     VectrData.u8Source[OVERDUB] = SWITCH;
-    VectrData.u8Control[RECORD] = TRIGGER;
+    VectrData.u8Control[RECORD] = TRIGGER_AUTO;
     VectrData.u8Control[PLAY] = TRIGGER_AUTO;
     VectrData.u8Control[OVERDUB] = TRIGGER;
     VectrData.u8OverdubStatus[X_OUTPUT_INDEX] = TRUE;
@@ -2058,7 +2051,7 @@ void defaultSettings(void){
     VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-    VectrData.u8NumRecordClocks = CLOCK_PULSE_1;
+    VectrData.u8NumRecordClocks = CLOCK_PULSE_16;
     VectrData.u8TimeQuantization[X_OUTPUT_INDEX] = FALSE;
     VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] = FALSE;
     VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] = FALSE;
@@ -2115,36 +2108,21 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
             setClockEnableFlag(TRUE);
             handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             slewPosition(p_mem_pos_and_gesture_struct);
+            //Handle the gate output
+            gateHandler(p_mem_pos_and_gesture_struct);
        }
        else{
         /*If hold is active, execute the hold behavior*/
             if(u8HandHoldFlag == TRUE){
-                handleZDecay(&pos_and_gesture_struct);
+                handleZDecay(p_mem_pos_and_gesture_struct);
             }
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
+            //Handle the gate output
+            gateHandler(p_mem_pos_and_gesture_struct);
             setClockEnableFlag(FALSE);
        }
 
-        if(p_VectrData->u8GateMode != HAND_GATE){
-            //Handle the gate output
-            gateHandler();
-        }else{
-            //Replay the hand presence.
-            /*If it's not a hold and z hasn't changed for three cycles, then "hand"
-              is not present.*/
-            if(u8HoldState == OFF){
-                if(pos_and_gesture_struct.u16ZPosition == u16LastZValue){
-                    u16StaticZCount++;
-                    if(u16StaticZCount >= 3){
-
-                    }
-                }
-                else{
-                    u16StaticZCount = 0;
-                    u16LastZValue = pos_and_gesture_struct.u16ZPosition;
-                }
-            }
-        }
+        
 
        /*Check encoder activations. Could go to live play or implement a hold*/
         if(u8HoldActivationFlag == HOLD_ACTIVATE){
@@ -2504,7 +2482,7 @@ void setHandPresentFlag(uint8_t u8NewState){
 }
 
 /*This function controls the gate output depending on the gate mode.*/
-void gateHandler(void){
+void gateHandler(pos_and_gesture_data * p_pos_and_gesture_struct){
     /*  HAND_GATE - High when a hand is present, low when it is not.
         RESET_GATE - Pulse at beginning of playback
         PLAY_GATE - High during playback, low when not.
@@ -2516,7 +2494,7 @@ void gateHandler(void){
     switch(u8GateMode){
         case HAND_GATE:
             /*If a hand is present, high. Otherwise, low.*/
-            if(u8HandPresentFlag == TRUE){
+            if(p_pos_and_gesture_struct->u16ZPosition > 0){
                 SET_GATE_OUT_PORT;
             }else{
                 CLEAR_GATE_OUT_PORT;
@@ -3916,6 +3894,10 @@ void indicateActiveAxes(uint8_t u8State){
 
 uint8_t getOverdubStatus(uint8_t u8Axis){
     return p_VectrData->u8OverdubStatus[u8Axis];
+}
+
+uint8_t getOverdubActiveFlag(void){
+    return Flags.u8OverdubActiveFlag;
 }
 
 void setKeyPressFlag(void){

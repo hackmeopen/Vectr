@@ -126,6 +126,8 @@ void BlinkSwitchLED(void);
 void runIndicateOverdubMode(void);
 void runIndicateSequencesMode(void);
 void runIndicateMuteMode(void);
+void indicateTimeQuantization(void);
+void indicateActiveOverdubAxes(void);
 
 void ledStateMachine(void){
     static uint8_t u8LEDState;
@@ -245,12 +247,15 @@ void ledStateMachine(void){
 void indicateTimeQuantization(void){
     int i;
     uint8_t u8Index;
-
-    for(i=0;i<NUMBER_OF_OUTPUTS;i++){
-        u8Index = LED20-i;
-        if(getTimeQuantizationStatus(i) && u16BlueLEDDutyCycleBuffer[u8Index] < HALF_BRIGHTNESS){
-            u16BlueLEDDutyCycleBuffer[u8Index] = HALF_BRIGHTNESS;
-        }
+    u8Index = NUM_OF_BLUE_LEDS-i;
+    if(getTimeQuantizationStatus(0)){
+        setLeftLEDs(HALF_BRIGHTNESS, ON);
+    }
+    if(getTimeQuantizationStatus(1)){
+        setTopLEDs(HALF_BRIGHTNESS, ON);
+    }
+    if(getTimeQuantizationStatus(2)){
+        setRightLEDs(HALF_BRIGHTNESS, ON);
     }
 }
 
