@@ -44,7 +44,7 @@
 //TODO: Test- Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
 // routine doesn't work.
 
-//TODO: Indicate time quantization.
+//TODO: Improve entering and exiting time quantization.
 //TODO: Z decay not working in overdub.
 
 //TODO: Figure out what to do with clocks during hold. Test and see what happens.
@@ -55,6 +55,9 @@
 //TODO: Work on the quantization. Make sure values are correct.
 //TODO: Change major to minor in the quantization.
 //TODO: Hand Gate not working in overdub
+//TODO: Modulation input seems to not reset when unplugged. Speed stayed on or something.
+//TODO: Quantized external speed changes not working right. Maybe double the clock
+//TODO: Work on clock division.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -221,7 +224,7 @@ void adjustSpeedModulation(uint16_t u16NewValue);
 void setNumberOfClockPulses(void);
 uint32_t calculateRampOutput(void);
 void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct);
-void calculateClockTimer(uint32_t u32PlaybackSpeed);
+void calculateClockTimer(uint32_t u32Speed);
 void enterAirScratchMode(void);
 uint16_t scaleSearch(const uint16_t *p_scale, uint16_t u16Position, uint8_t u8Length);
 void resetInputClockHandling(void);
@@ -349,7 +352,7 @@ uint8_t handleClock(void){
         
         u8CurrentInputClockCount++;
 
-        if(u8CurrentInputClockCount == u8ClockLengthOfRecordedSequence){
+        if(u8CurrentInputClockCount > u8ClockLengthOfRecordedSequence){
             u8CurrentInputClockCount = 0;
         }
         
@@ -2312,12 +2315,12 @@ uint32_t calculateNextClockPulse(void){
  used because the resolution is too poor. With this routine, we run the clock timer
  at a multiple faster than the regular timer and count up to a number to trigger
  the correct to get more accurate timing.*/
-void calculateClockTimer(uint32_t u32PlaybackSpeed){
+void calculateClockTimer(uint32_t u32Speed){
 
     uint32_t u32LengthOfSequence = getActiveSequenceLength()/6;
 
     uint8_t u8ClockMode = p_VectrData->u8ClockMode;//Clock pulses per cycle
-    uint32_t u32ClockSpeed = u32PlaybackSpeed;//How fast does the clock have to run?
+    uint32_t u32ClockSpeed = u32Speed;//How fast does the clock have to run?
     uint16_t u16Multiple = 3;//Run at least 8x faster than the sample clock
     uint32_t u32ClockTimerTriggerCount;
     
@@ -3119,7 +3122,7 @@ void finishRecording(void){
         u8CurrentInputClockCount = 0;
     }else{
         //Free running switch recording. We have to calculate the clock data.
-        u8ClockLengthOfRecordedSequence = (1<<p_VectrData->u8ClockMode) - 1;
+        u8ClockLengthOfRecordedSequence = 1<<p_VectrData->u8ClockMode;
         u32TargetNumTicksBetweenClocks = getActiveSequenceLength()/6;//total sequence length/clock length
         u32TargetNumTicksBetweenClocks >>= p_VectrData->u8ClockMode;//Divided by the number of clock pulses.
         for(i=0; i< LENGTH_OF_INPUT_CLOCK_ARRAY; i++){
@@ -3433,13 +3436,6 @@ void switchStateMachine(void){
                                     }
                                 }
 
-                            }
-
-                            if(u8PlaybackRunFlag == RUN){
-                                setSwitchLEDState(SWITCH_LED_GREEN_BLINKING);
-                            }
-                            else{
-                                setSwitchLEDState(OFF);
                             }
 
                         }else{//external control = arm playback

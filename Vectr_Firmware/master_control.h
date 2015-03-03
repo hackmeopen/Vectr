@@ -148,7 +148,7 @@ enum{
 
 //Modulation modes.
 enum{
-    SPEED,
+    SPEED = 0,
     QUANTIZED_SPEED,
     SCRUB,
     TRIM,
