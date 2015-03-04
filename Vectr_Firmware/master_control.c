@@ -39,6 +39,7 @@
 //TODO: Test - Turn off tap tempo when external recording is enabled.
 //TODO: Test - Implement quantized speed changes when record is set to external.
 //TODO: Test - Deal with all the playback modes with the new clocks.
+//TODO: Test - Hand Gate not working in overdub
 
 //TODO: Test - Deal with clock sync during flash playback.
 //TODO: Test- Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
@@ -48,16 +49,15 @@
 //TODO: Z decay not working in overdub.
 
 //TODO: Figure out what to do with clocks during hold. Test and see what happens.
-//TODO: Keep the clock sync'ed during overdub recording?
 //TODO: Handle record clock during air scratching.
 //TODO: Deal with gated modes and clock.
 //TODO: Test what happens when the number of clocks is changed during playback and such.
 //TODO: Work on the quantization. Make sure values are correct.
 //TODO: Change major to minor in the quantization.
-//TODO: Hand Gate not working in overdub
-//TODO: Modulation input seems to not reset when unplugged. Speed stayed on or something.
+
 //TODO: Quantized external speed changes not working right. Maybe double the clock
-//TODO: Work on clock division.
+//TODO: Get back to one clock number.
+//TODO: Implement clock divisions to do the quantized speed changes.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -304,8 +304,8 @@ uint8_t handleClock(void){
          and cycle the loop back around in playback and overdubbing.*/
         u8CurrentInputClockCount++;
 
-        //Add 1 because we want to end on the 1
-        u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+        //Check to see if the current count is a multiple of the desired clock length.
+        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumRecordClocks);
 
     }else if(u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
             && u8HandPresentFlag == TRUE){
@@ -314,6 +314,7 @@ uint8_t handleClock(void){
             setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
         }else{
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            syncLoop();
         }
 
         /*Keep track of the number of record input clocks. Know where we are in the loop
@@ -321,7 +322,7 @@ uint8_t handleClock(void){
         u8CurrentInputClockCount++;
 
         //Add 1 because we want to end on the 1
-        u8modulus = (u8CurrentInputClockCount+1) % (1<<VectrData.u8NumRecordClocks);
+        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumRecordClocks);
 
     }
     else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
@@ -330,7 +331,11 @@ uint8_t handleClock(void){
         if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }else{
-            setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+            if(u8ClockLengthOfRecordedSequence > 1){
+                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+            }else{
+                setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            }
             syncLoop();
         }
 
@@ -352,7 +357,7 @@ uint8_t handleClock(void){
         
         u8CurrentInputClockCount++;
 
-        if(u8CurrentInputClockCount > u8ClockLengthOfRecordedSequence){
+        if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
             u8CurrentInputClockCount = 0;
         }
         
@@ -368,7 +373,7 @@ uint8_t handleClock(void){
 
         u8CurrentInputClockCount++;
 
-        if(u8CurrentInputClockCount == ((1 << p_VectrData->u8ClockMode) - 1)){
+        if(u8CurrentInputClockCount == 1 << p_VectrData->u8ClockMode){
             u8CurrentInputClockCount = 0;
         }
     }
@@ -2062,41 +2067,10 @@ void defaultSettings(void){
 
 void runPlaybackMode(uint8_t u8RecordTrigger){
 
-    static uint16_t u16LastZValue = 0;
-    static uint16_t u16StaticZCount = 0;
-
    if(u8PlaybackRunFlag == RUN){
        if(u8HoldState == OFF){
             if(u8BufferDataCount == 0){
                 xQueueReceive(xRAMReadQueue, &memBuffer, 0);
-
-                //With clock synchronized playback, the reset pulse is triggered with the clock handling
-                //The below code is only necessary with internally triggered recording.
-                if(p_VectrData->u8Source[RECORD] == SWITCH && u8TapTempoSetFlag == FALSE){
-                    if(getStoredSequenceLocationFlag() == STORED_IN_RAM){
-                        if(p_VectrData->u8PlaybackMode != PENDULUM){
-                            if(getRAMReadAddress() == 0){
-                                setResetFlag();
-                            }
-                        }
-                        else{
-                            if(getRAMReadAddress() == 0 || getRAMReadAddress() == getEndOfSequenceAddress()){
-                                setResetFlag();
-                            }
-                        }
-                    }else{
-                        if(p_VectrData->u8PlaybackMode != PENDULUM){
-                            if(getFlashReadAddress() == getMemoryStartAddress()){
-                                setResetFlag();
-                            }
-                        }else{
-                            if(getRAMReadAddress() == getMemoryStartAddress() || getRAMReadAddress() == getEndOfSequenceAddress()){
-                                setResetFlag();
-                            }
-                        }
-                    }
-                }
-
                 p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
                 u8BufferDataCount++;
             }
