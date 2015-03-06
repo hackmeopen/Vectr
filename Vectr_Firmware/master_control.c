@@ -57,7 +57,10 @@
 
 //TODO: Quantized external speed changes not working right. Maybe double the clock
 //TODO: Get back to one clock number.
-//TODO: Implement clock divisions to do the quantized speed changes.
+//TODO: Implement clock divisions to do the quantized speed changes. Deal with the clock trigger in external mode?
+//Deal with the clock trigger in external mode if the speed has been quantize changed.
+//Then we'll have to count real triggers and keep the math working.
+//TODO: Separate out the LED blinking in playback so it can be called from the timer routine.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -140,6 +143,7 @@ static uint8_t u8ClockTriggerFlag;//Set by the Timer clock routine in app.c TIM3
 static uint32_t u32NewPlaybackSpeedClocked;
 static uint8_t u8NewPlaybackSpeedClockedFlag;
 static uint32_t u32NewClockClicks;
+static uint8_t u8ExternalAirWheelActiveFlag;
 
 static uint8_t u8MultiTapTriggerTimer;
 #define MULTI_TAP_TIMER_RESET   50
@@ -291,8 +295,10 @@ uint8_t handleClock(void){
         }
 
         //With external recording, the clock output mirrors the clock input
-        SET_LOOP_SYNC_OUT;
-        setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+        if(u8ExternalAirWheelActiveFlag == FALSE){
+            SET_LOOP_SYNC_OUT;
+            setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+        }
     }
 
     /*Blink the switch LED to indicate incoming record clock signals.*/
@@ -305,7 +311,7 @@ uint8_t handleClock(void){
         u8CurrentInputClockCount++;
 
         //Check to see if the current count is a multiple of the desired clock length.
-        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumRecordClocks);
+        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumClocks);
 
     }else if(u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
             && u8HandPresentFlag == TRUE){
@@ -322,7 +328,7 @@ uint8_t handleClock(void){
         u8CurrentInputClockCount++;
 
         //Add 1 because we want to end on the 1
-        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumRecordClocks);
+        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumClocks);
 
     }
     else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
@@ -373,7 +379,7 @@ uint8_t handleClock(void){
 
         u8CurrentInputClockCount++;
 
-        if(u8CurrentInputClockCount == 1 << p_VectrData->u8ClockMode){
+        if(u8CurrentInputClockCount == 1 << p_VectrData->u8NumClocks){
             u8CurrentInputClockCount = 0;
         }
     }
@@ -1284,12 +1290,14 @@ void MasterControlStateMachine(void){
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed>>1;//Lower number makes the clock faster
                                     u16LastAirWheelData = u16AirwheelData;
                                     u8NewPlaybackSpeedClockedFlag = TRUE;
+                                    u8ExternalAirWheelActiveFlag = TRUE;
                                     u32NewClockClicks = u32AvgNumTicksBetweenClocks<<1;
                                 }else if(i16AirWheelChange <= -32){
                                     //Divide the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed<<1;
                                     u16LastAirWheelData = u16AirwheelData;
                                     u8NewPlaybackSpeedClockedFlag = TRUE;
+                                    u8ExternalAirWheelActiveFlag = TRUE;
                                     u32NewClockClicks = u32AvgNumTicksBetweenClocks>>1;
                                 }
                             }
@@ -2028,7 +2036,6 @@ void defaultSettings(void){
     VectrData.u8PlaybackMode = LOOPING;
     VectrData.u8ModulationMode = SPEED;
     VectrData.u8GateMode = HAND_GATE;
-    VectrData.u8ClockMode = CLOCK_PULSE_1;
     VectrData.u16SlewRate[X_OUTPUT_INDEX] = MID_SLEW_RATE;
     VectrData.u16SlewRate[Y_OUTPUT_INDEX] = MID_SLEW_RATE;
     VectrData.u16SlewRate[Z_OUTPUT_INDEX] = MID_SLEW_RATE;
@@ -2059,7 +2066,7 @@ void defaultSettings(void){
     VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-    VectrData.u8NumRecordClocks = CLOCK_PULSE_16;
+    VectrData.u8NumClocks = CLOCK_PULSE_8;
     VectrData.u8TimeQuantization[X_OUTPUT_INDEX] = FALSE;
     VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] = FALSE;
     VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] = FALSE;
@@ -2264,10 +2271,10 @@ uint32_t calculateRampOutput(void){
 uint32_t calculateNextClockPulse(void){
     static uint8_t u8RoundFlag = 0;
     uint32_t u32LengthOfSequence = getActiveSequenceLength();
-    uint8_t u8ClockMode = p_VectrData->u8ClockMode;
+    uint8_t u8NumClocks = p_VectrData->u8NumClocks;
     uint8_t u8Modulus;
 
-    u32NextClockPulseIndex = u32LengthOfSequence>>u8ClockMode;
+    u32NextClockPulseIndex = u32LengthOfSequence>>u8NumClocks;
 
     u8Modulus = u32NextClockPulseIndex%6;
 
@@ -2293,7 +2300,7 @@ void calculateClockTimer(uint32_t u32Speed){
 
     uint32_t u32LengthOfSequence = getActiveSequenceLength()/6;
 
-    uint8_t u8ClockMode = p_VectrData->u8ClockMode;//Clock pulses per cycle
+    uint8_t u8ClockMode = p_VectrData->u8NumClocks;//Clock pulses per cycle
     uint32_t u32ClockSpeed = u32Speed;//How fast does the clock have to run?
     uint16_t u16Multiple = 3;//Run at least 8x faster than the sample clock
     uint32_t u32ClockTimerTriggerCount;
@@ -2646,7 +2653,7 @@ void runModulation(pos_and_gesture_data * p_pos_and_gesture_struct){
 
                     /*Check if it's time for a clock pulse.*/
                        
-                    u16Divisor = u32NewReadAddress>>p_VectrData->u8ClockMode;
+                    u16Divisor = u32NewReadAddress>>p_VectrData->u8NumClocks;
 
                     if(u16Divisor != 0){
                         u16Modulus = u32NewReadAddress%u16Divisor;
@@ -3049,6 +3056,7 @@ void startNewRecording(void){
     memBuffer.sample_2.u16YPosition = pos_and_gesture_struct.u16YPosition;
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
+    u8ExternalAirWheelActiveFlag = TRUE;
 
     setSwitchLEDState(SWITCH_LED_RED_BLINKING); 
 
@@ -3096,9 +3104,9 @@ void finishRecording(void){
         u8CurrentInputClockCount = 0;
     }else{
         //Free running switch recording. We have to calculate the clock data.
-        u8ClockLengthOfRecordedSequence = 1<<p_VectrData->u8ClockMode;
+        u8ClockLengthOfRecordedSequence = 1<<p_VectrData->u8NumClocks;
         u32TargetNumTicksBetweenClocks = getActiveSequenceLength()/6;//total sequence length/clock length
-        u32TargetNumTicksBetweenClocks >>= p_VectrData->u8ClockMode;//Divided by the number of clock pulses.
+        u32TargetNumTicksBetweenClocks >>= p_VectrData->u8NumClocks;//Divided by the number of clock pulses.
         for(i=0; i< LENGTH_OF_INPUT_CLOCK_ARRAY; i++){
             u32NumTicksBetweenClocksArray[i] = u32TargetNumTicksBetweenClocks;
         }
@@ -4160,11 +4168,11 @@ void setCurrentLoopMode(uint8_t u8NewSetting){
 }
 
 uint8_t getCurrentRecordClocks(void){
-    return p_VectrData->u8NumRecordClocks;
+    return p_VectrData->u8NumClocks;
 }
 
 void setCurrentRecordClocks(uint8_t u8NewSetting){
-    p_VectrData->u8NumRecordClocks = u8NewSetting;
+    p_VectrData->u8NumClocks = u8NewSetting;
 }
 
 uint8_t getCurrentGateMode(void){
@@ -4176,11 +4184,11 @@ void setCurrentGateMode(uint8_t u8NewState){
 }
 
 uint8_t getCurrentClockMode(void){
-    return p_VectrData->u8ClockMode;
+    return p_VectrData->u8NumClocks;
 }
 
 void setCurrentClockMode(uint8_t u8NewSetting){
-    p_VectrData->u8ClockMode = u8NewSetting;
+    p_VectrData->u8NumClocks = u8NewSetting;
     calculateClockTimer(u32PlaybackSpeed);
 }
 
@@ -4209,7 +4217,7 @@ uint8_t getCurrentSequenceIndex(void){
 }
 
 void setNumberOfClockPulses(void){
-    u8NumOfClockPulses = 1 << p_VectrData->u8ClockMode;
+    u8NumOfClockPulses = 1 << p_VectrData->u8NumClocks;
 }
 
 uint32_t getNextClockPulseIndex(void){
@@ -4234,6 +4242,10 @@ void clearResetFlag(void){
 
 uint8_t getResetFlag(void){
     return u8ResetFlag;
+}
+
+uint8_t getu8ExternalAirWheelActiveFlag(void){
+    return u8ExternalAirWheelActiveFlag;
 }
 
 VectrDataStruct * getVectrDataStart(void){

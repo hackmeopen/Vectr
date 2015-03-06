@@ -265,10 +265,8 @@ typedef struct{
     uint8_t u8OverdubStatus[NUMBER_OF_OUTPUTS];
     uint8_t u16Quantization[NUMBER_OF_OUTPUTS];
     uint8_t u8MuteState[NUMBER_OF_OUTPUTS];
-    uint8_t u8ClockMode;
+    uint8_t u8NumClocks;//The number of clocks coming and going.
     uint8_t u8GateMode;
-    uint8_t u8NumRecordClocks;//The number of clocks to be counted for auto recording and also
-                                //the number of clock multiples for external recording.
     uint8_t u8TimeQuantization[NUMBER_OF_OUTPUTS];
 }VectrDataStruct;
 
@@ -335,6 +333,7 @@ void setClockTriggerFlag(void);
 uint8_t getTapTempoSetFlag(void);
 uint8_t getTimeQuantizationStatus(uint8_t u8Index);
 uint8_t getOverdubActiveFlag(void);
+uint8_t getu8ExternalAirWheelActiveFlag(void);
 
 
 #endif	/* MASTER_CONTROL_H */

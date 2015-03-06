@@ -787,18 +787,11 @@ void changeRecSubMenuState(void){
     }
 
     if(i8MainMenuState != PLAYBACK_MENU){
-        if(i8SubMenuState > CONTROL && i8SubMenuState < CLK_NUMBER){
-            if(i8MenuChangeFlag < 0){
-                i8SubMenuState = CONTROL;
-            }else{
-                i8SubMenuState = CLK_NUMBER;
-            }
-        }
-        else if(i8SubMenuState > CLK_NUMBER){
+        if(i8SubMenuState > CONTROL){
             i8SubMenuState = SOURCE;
         }
-        else if(i8SubMenuState < 1){
-            i8SubMenuState = CLK_NUMBER;
+        else if(i8SubMenuState < SOURCE){
+            i8SubMenuState = CONTROL;
         }
     }
     else{
