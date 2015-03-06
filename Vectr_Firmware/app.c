@@ -481,6 +481,7 @@ void vTIM3InterruptHandler(void){
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
                     setClockTriggerFlag();//Let master control know a clock edge occurred.
+                    handleSwitchLEDClockBlink();
                 }
                 u32ClockTimer = 0;
             }

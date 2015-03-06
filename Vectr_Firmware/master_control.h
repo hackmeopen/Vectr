@@ -334,6 +334,7 @@ uint8_t getTapTempoSetFlag(void);
 uint8_t getTimeQuantizationStatus(uint8_t u8Index);
 uint8_t getOverdubActiveFlag(void);
 uint8_t getu8ExternalAirWheelActiveFlag(void);
+void handleSwitchLEDClockBlink(void);
 
 
 #endif	/* MASTER_CONTROL_H */

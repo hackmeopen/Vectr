@@ -304,8 +304,6 @@ uint8_t handleClock(void){
     /*Blink the switch LED to indicate incoming record clock signals.*/
     if(u8OperatingMode == RECORDING){
 
-        setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
-
         /*Keep track of the number of record input clocks. Know where we are in the loop
          and cycle the loop back around in playback and overdubbing.*/
         u8CurrentInputClockCount++;
@@ -313,36 +311,16 @@ uint8_t handleClock(void){
         //Check to see if the current count is a multiple of the desired clock length.
         u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumClocks);
 
-    }else if(u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
-            && u8HandPresentFlag == TRUE){
-
-        if(u8CurrentInputClockCount != 0){
-            setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
-        }else{
-            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
-            syncLoop();
-        }
-
-        /*Keep track of the number of record input clocks. Know where we are in the loop
-         and cycle the loop back around in playback and overdubbing.*/
-        u8CurrentInputClockCount++;
-
-        //Add 1 because we want to end on the 1
-        u8modulus = u8CurrentInputClockCount % (1<<VectrData.u8NumClocks);
-
     }
     else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
         /*This state is for playback or for overdubbing when playback isn't running.*/
 
-        if(u8CurrentInputClockCount != 0){
-            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
-        }else{
-            if(u8ClockLengthOfRecordedSequence > 1){
-                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
-            }else{
-                setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
-            }
+        if(u8CurrentInputClockCount == 0){
             syncLoop();
+        }
+        
+        if(u8ExternalAirWheelActiveFlag == FALSE){
+            handleSwitchLEDClockBlink();
         }
 
         /* Calculate the running average of time between clocks.
@@ -370,12 +348,7 @@ uint8_t handleClock(void){
     }
     else{
         //This mode is for Live Play Mode when tap tempo has been activated.
-        /*This state is for playback.*/
-        if(u8CurrentInputClockCount != 0){
-            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
-        }else{
-            setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
-        }
+        handleSwitchLEDClockBlink();
 
         u8CurrentInputClockCount++;
 
@@ -389,6 +362,37 @@ uint8_t handleClock(void){
     }
     else{
         return 0;
+    }
+}
+
+void handleSwitchLEDClockBlink(void){
+    if(u8OperatingMode == RECORDING){
+         setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+    }else if(u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
+            && u8HandPresentFlag == TRUE){
+        if(u8CurrentInputClockCount != 0){
+            setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+        }else{
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+        }
+
+    }else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
+        if(u8CurrentInputClockCount != 0){
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+        }else{
+            if(u8ClockLengthOfRecordedSequence > 1){
+                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+            }else{
+                setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            }
+        }
+    }else{
+        //This mode is for Live Play Mode when tap tempo has been activated.
+        if(u8CurrentInputClockCount != 0){
+            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+        }else{
+            setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+        }
     }
 }
 
