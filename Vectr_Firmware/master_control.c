@@ -366,6 +366,7 @@ uint8_t handleClock(void){
 }
 
 void handleSwitchLEDClockBlink(void){
+    
     if(u8OperatingMode == RECORDING){
          setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
     }else if(u8OperatingMode == OVERDUBBING && Flags.u8OverdubActiveFlag == TRUE
