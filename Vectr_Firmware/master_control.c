@@ -304,6 +304,8 @@ uint8_t handleClock(void){
     /*Blink the switch LED to indicate incoming record clock signals.*/
     if(u8OperatingMode == RECORDING){
 
+        handleSwitchLEDClockBlink();
+        
         /*Keep track of the number of record input clocks. Know where we are in the loop
          and cycle the loop back around in playback and overdubbing.*/
         u8CurrentInputClockCount++;
@@ -319,9 +321,14 @@ uint8_t handleClock(void){
             syncLoop();
         }
         
-        if(u8ExternalAirWheelActiveFlag == FALSE){
+     //   if(u8ExternalAirWheelActiveFlag == FALSE){
             handleSwitchLEDClockBlink();
-        }
+            u8CurrentInputClockCount++;
+
+            if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
+                u8CurrentInputClockCount = 0;
+            }
+    //    }
 
         /* Calculate the running average of time between clocks.
          * If the result has changed, speed up or slow down the playback.
@@ -337,12 +344,6 @@ uint8_t handleClock(void){
             SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
             RESET_SAMPLE_TIMER;
             calculateClockTimer(u32PlaybackSpeed);
-        }
-        
-        u8CurrentInputClockCount++;
-
-        if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
-            u8CurrentInputClockCount = 0;
         }
         
     }
@@ -387,6 +388,7 @@ void handleSwitchLEDClockBlink(void){
                 setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
             }
         }
+
     }else{
         //This mode is for Live Play Mode when tap tempo has been activated.
         if(u8CurrentInputClockCount != 0){
@@ -555,6 +557,10 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
     return u32AvgNumTicksBetweenClocks;
 }
 
+#define LENGTH_OF_LOG  32
+uint16_t  u16LogIndex;
+uint16_t u16LogValues[LENGTH_OF_LOG];
+
 /* When the record input is being used to synchronize playback,
  * this function will speed up and slow down the playback clock to keep
  * the number of ticks between clock edges constant.
@@ -562,16 +568,15 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
 void regulateClockPlaybackSpeed(void){
     int16_t i16Temp;
     uint8_t u8Change = 0;
+    int16_t i16Difference = u32TargetNumTicksBetweenClocks - u32AvgNumTicksBetweenClocks;
+    //Negative means slower, positive means faster
 
     /*If the number of clock ticks between edges changes, then we need to speed up or slow
      * down the playback clock to keep the playback speed constant.
      */
-    if(u32AvgNumTicksBetweenClocks > u32TargetNumTicksBetweenClocks){
-        i16Temp = u16PlaybackSpeedTableIndex - 8;
-        u8Change = 1;
-    }
-    else if(u32AvgNumTicksBetweenClocks < u32TargetNumTicksBetweenClocks){
-        i16Temp = u16PlaybackSpeedTableIndex + 8;
+    i16Difference >>= 2;
+    if(i16Difference != 0){
+        i16Temp = u16PlaybackSpeedTableIndex + i16Difference;
         u8Change = 1;
     }
 
@@ -586,6 +591,12 @@ void regulateClockPlaybackSpeed(void){
             calculateClockTimer(u32PlaybackSpeed);
         }
     }
+
+    u16LogValues[u16LogIndex++] = u32PlaybackSpeed;
+    if(u16LogIndex == LENGTH_OF_LOG){
+        u16LogIndex = 0;
+    }
+
 }
 
 /*Time quantization
@@ -650,9 +661,7 @@ void MasterControlInit(void){
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
 }
 
-#define LENGTH_OF_LOG  500
-uint16_t  u16LogIndex;
-uint16_t u16LogValues[LENGTH_OF_LOG];
+
 
 
 
@@ -1184,18 +1193,18 @@ void MasterControlStateMachine(void){
                    (p_VectrData->u8Source[PLAYBACK] == SWITCH
                     && u8ClockTriggerFlag == TRUE)){
 
-                    if(p_VectrData->u8Control[RECORD] == TRIGGER){
-                        handleClock();
-                    }
-                    else if(p_VectrData->u8Control[RECORD] == TRIGGER_AUTO){
-                        if(handleClock()){
-                            u8RecordingArmedFlag = NOT_ARMED;
-                            u8RecordTrigger = NO_TRIGGER;
-                            finishRecording();
+                        if(p_VectrData->u8Control[RECORD] == TRIGGER){
+                            handleClock();
                         }
-                    }
+                        else if(p_VectrData->u8Control[RECORD] == TRIGGER_AUTO){
+                            if(handleClock()){
+                                u8RecordingArmedFlag = NOT_ARMED;
+                                u8RecordTrigger = NO_TRIGGER;
+                                finishRecording();
+                            }
+                        }
 
-                    u8ClockTriggerFlag = FALSE;
+                        u8ClockTriggerFlag = FALSE;
                 }
             }
       
@@ -1263,12 +1272,6 @@ void MasterControlStateMachine(void){
 
                 if(u8HoldState != ON){
                     if(u16AirwheelData != u16LastAirWheelData){
-
-                         u16LogValues[u16LogIndex++] = u16AirwheelData;
-
-                        if(u16LogIndex >= LENGTH_OF_LOG){
-                            u16LogIndex = 0;
-                        }
 
                         //if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
                          if(u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
@@ -3061,7 +3064,7 @@ void startNewRecording(void){
     memBuffer.sample_2.u16YPosition = pos_and_gesture_struct.u16YPosition;
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
-    u8ExternalAirWheelActiveFlag = TRUE;
+    u8ExternalAirWheelActiveFlag = FALSE;
 
     setSwitchLEDState(SWITCH_LED_RED_BLINKING); 
 

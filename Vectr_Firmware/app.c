@@ -449,6 +449,7 @@ void setClockEnableFlag(uint8_t u8NewState){
 
 void resetRecClockCount(void){
     u32RecClockCount = 0;
+    u32ClockTimer = u32ClockTimerTriggerCount;
 }
 
 uint32_t getRecClockCount(void){
@@ -475,15 +476,16 @@ void vTIM3InterruptHandler(void){
                 /*If record is sync'ed to external then clock pulses are
                  * duplicated from the record input.
                  */
-                if(((getCurrentSource(RECORD) != EXTERNAL &&
-                    getCurrentControl(RECORD) != GATE) || u8ExternalAirWheelActiveFlag == TRUE)
+                if((getCurrentSource(RECORD) != EXTERNAL &&
+                    getCurrentControl(RECORD) != GATE)
                     || u8TapTempoSetFlag == TRUE){
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
                     setClockTriggerFlag();//Let master control know a clock edge occurred.
-                    if(u8ExternalAirWheelActiveFlag == TRUE){
-                        handleSwitchLEDClockBlink();
-                    }
+                }else if(u8ExternalAirWheelActiveFlag == TRUE){
+                    handleSwitchLEDClockBlink();
+                    SET_LOOP_SYNC_OUT;
+                    u8ClockPulseFlag = TRUE;
                 }
                 u32ClockTimer = 0;
             }
