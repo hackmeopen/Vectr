@@ -155,8 +155,8 @@ enum{
     FIRST_TIME_QUANT_GESTURE_RECEIVED
 };
 
-#define LENGTH_OF_INPUT_CLOCK_ARRAY     4
-#define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
+#define LENGTH_OF_INPUT_CLOCK_ARRAY     8
+#define LOG_LENGTH_INPUT_CLOCK_ARRAY    3
 #define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  64
 
 static uint8_t u8CurrentInputClockCount;
@@ -574,8 +574,14 @@ void regulateClockPlaybackSpeed(void){
     /*If the number of clock ticks between edges changes, then we need to speed up or slow
      * down the playback clock to keep the playback speed constant.
      */
-    i16Difference >>= 2;
-    if(i16Difference != 0){
+    
+    if(i16Difference > 4){
+        i16Temp = u16PlaybackSpeedTableIndex + 4;
+        u8Change = 1;
+    }else if(i16Difference < -4){
+        i16Temp = u16PlaybackSpeedTableIndex - 4;
+        u8Change = 1;
+    }else{
         i16Temp = u16PlaybackSpeedTableIndex + i16Difference;
         u8Change = 1;
     }
@@ -590,9 +596,11 @@ void regulateClockPlaybackSpeed(void){
             /*Adjust the clock timer accordingly.*/
             calculateClockTimer(u32PlaybackSpeed);
         }
+
+   //     u32TargetNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks;
     }
 
-    u16LogValues[u16LogIndex++] = u32PlaybackSpeed;
+    u16LogValues[u16LogIndex++] = u32AvgNumTicksBetweenClocks;
     if(u16LogIndex == LENGTH_OF_LOG){
         u16LogIndex = 0;
     }
