@@ -155,8 +155,8 @@ enum{
     FIRST_TIME_QUANT_GESTURE_RECEIVED
 };
 
-#define LENGTH_OF_INPUT_CLOCK_ARRAY     8
-#define LOG_LENGTH_INPUT_CLOCK_ARRAY    3
+#define LENGTH_OF_INPUT_CLOCK_ARRAY     4
+#define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
 #define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  64
 
 static uint8_t u8CurrentInputClockCount;
@@ -288,7 +288,7 @@ uint8_t handleClock(void){
      */
     if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
         u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getRecClockCount();
-        resetRecClockCount();
+       // resetRecClockCount();
         u8CurrentClockArrayIndex++;
         if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
             u8CurrentClockArrayIndex = 0;
@@ -442,7 +442,7 @@ void runTapTempo(void){
                 setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
             }else{
                 u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
-                resetRecClockCount(); 
+                resetRecClockCount();
                 setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
                 if(u8TapTempoArrayIndex == LENGTH_OF_TAP_TEMPO_ARRAY - 1){                   
                     u8TapTempoArrayIndex = 0;
@@ -560,6 +560,7 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
 #define LENGTH_OF_LOG  32
 uint16_t  u16LogIndex;
 uint16_t u16LogValues[LENGTH_OF_LOG];
+int16_t i16SecondLogValues[LENGTH_OF_LOG];
 
 /* When the record input is being used to synchronize playback,
  * this function will speed up and slow down the playback clock to keep
@@ -569,12 +570,19 @@ void regulateClockPlaybackSpeed(void){
     int16_t i16Temp;
     uint8_t u8Change = 0;
     int16_t i16Difference = u32TargetNumTicksBetweenClocks - u32AvgNumTicksBetweenClocks;
+    i16SecondLogValues[u16LogIndex] = i16Difference;
+
     //Negative means slower, positive means faster
 
     /*If the number of clock ticks between edges changes, then we need to speed up or slow
      * down the playback clock to keep the playback speed constant.
      */
-    
+    //Figure out a way to change the speed proportionally.
+    //The current method has a limited ability to change the playback speed in a way
+    //that matches the change in the number of clocks.
+
+    i16Difference >>= 3;
+
     if(i16Difference > 4){
         i16Temp = u16PlaybackSpeedTableIndex + 4;
         u8Change = 1;
@@ -600,7 +608,9 @@ void regulateClockPlaybackSpeed(void){
    //     u32TargetNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks;
     }
 
-    u16LogValues[u16LogIndex++] = u32AvgNumTicksBetweenClocks;
+    
+    u16LogValues[u16LogIndex++] = u16PlaybackSpeedTableIndex;
+    
     if(u16LogIndex == LENGTH_OF_LOG){
         u16LogIndex = 0;
     }
