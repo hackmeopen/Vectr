@@ -335,7 +335,8 @@ uint8_t handleClock(void){
          */
         if(u8NewPlaybackSpeedClockedFlag != TRUE){
 
-            calculateAvgNumClicksBetweenClocks();
+            //calculateAvgNumClicksBetweenClocks();
+            u32AvgNumTicksBetweenClocks = getRecClockCount();
         }else{
             //The speed changed. Need to update.
             u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
@@ -559,7 +560,7 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
 
 #define LENGTH_OF_LOG  32
 uint16_t  u16LogIndex;
-uint16_t u16LogValues[LENGTH_OF_LOG];
+uint32_t u32LogValues[LENGTH_OF_LOG];
 int16_t i16SecondLogValues[LENGTH_OF_LOG];
 
 /* When the record input is being used to synchronize playback,
@@ -569,8 +570,13 @@ int16_t i16SecondLogValues[LENGTH_OF_LOG];
 void regulateClockPlaybackSpeed(void){
     int16_t i16Temp;
     uint8_t u8Change = 0;
-    int16_t i16Difference = u32TargetNumTicksBetweenClocks - u32AvgNumTicksBetweenClocks;
+    int16_t i16Difference = u32AvgNumTicksBetweenClocks- u32TargetNumTicksBetweenClocks;
+    uint32_t u32NewPlaybackSpeed;
+    int32_t i32PlaybackSpeedChange;
+
     i16SecondLogValues[u16LogIndex] = i16Difference;
+
+    //Too few clock counts - clock needs to run faster. Smaller playback speed is faster.
 
     //Negative means slower, positive means faster
 
@@ -581,35 +587,45 @@ void regulateClockPlaybackSpeed(void){
     //The current method has a limited ability to change the playback speed in a way
     //that matches the change in the number of clocks.
 
-    i16Difference >>= 3;
+    i32PlaybackSpeedChange = u32PlaybackSpeed * i16Difference;
+    i32PlaybackSpeedChange /= (int32_t) u32TargetNumTicksBetweenClocks;
+    u32NewPlaybackSpeed = u32PlaybackSpeed + i32PlaybackSpeedChange;
+    u32PlaybackSpeed = u32NewPlaybackSpeed;
+    SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+    RESET_SAMPLE_TIMER;
 
-    if(i16Difference > 4){
-        i16Temp = u16PlaybackSpeedTableIndex + 4;
-        u8Change = 1;
-    }else if(i16Difference < -4){
-        i16Temp = u16PlaybackSpeedTableIndex - 4;
-        u8Change = 1;
-    }else{
-        i16Temp = u16PlaybackSpeedTableIndex + i16Difference;
-        u8Change = 1;
-    }
-
-    if(u8Change){
-        if(i16Temp > MINIMUM_SPEED_INDEX && i16Temp < MAXIMUM_SPEED_INDEX){
-            u16PlaybackSpeedTableIndex = i16Temp;
-            u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-            RESET_SAMPLE_TIMER;
-
-            /*Adjust the clock timer accordingly.*/
-            calculateClockTimer(u32PlaybackSpeed);
-        }
-
-   //     u32TargetNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks;
-    }
+    /*Adjust the clock timer accordingly.*/
+    calculateClockTimer(u32PlaybackSpeed);
+    
+//    i16Difference >>= 3;
+//
+//    if(i16Difference > 4){
+//        i16Temp = u16PlaybackSpeedTableIndex + 4;
+//        u8Change = 1;
+//    }else if(i16Difference < -4){
+//        i16Temp = u16PlaybackSpeedTableIndex - 4;
+//        u8Change = 1;
+//    }else{
+//        i16Temp = u16PlaybackSpeedTableIndex + i16Difference;
+//        u8Change = 1;
+//    }
+//
+//    if(u8Change){
+//        if(i16Temp > MINIMUM_SPEED_INDEX && i16Temp < MAXIMUM_SPEED_INDEX){
+//            u16PlaybackSpeedTableIndex = i16Temp;
+//            u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
+//            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+//            RESET_SAMPLE_TIMER;
+//
+//            /*Adjust the clock timer accordingly.*/
+//            calculateClockTimer(u32PlaybackSpeed);
+//        }
+//
+//   //     u32TargetNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks;
+//    }
 
     
-    u16LogValues[u16LogIndex++] = u16PlaybackSpeedTableIndex;
+    u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
     
     if(u16LogIndex == LENGTH_OF_LOG){
         u16LogIndex = 0;
