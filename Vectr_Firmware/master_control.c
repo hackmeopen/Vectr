@@ -321,14 +321,14 @@ uint8_t handleClock(void){
             syncLoop();
         }
         
-     //   if(u8ExternalAirWheelActiveFlag == FALSE){
+        if(u8ExternalAirWheelActiveFlag == FALSE){
             handleSwitchLEDClockBlink();
             u8CurrentInputClockCount++;
 
             if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
                 u8CurrentInputClockCount = 0;
             }
-    //    }
+        }
 
         /* Calculate the running average of time between clocks.
          * If the result has changed, speed up or slow down the playback.
@@ -380,6 +380,15 @@ void handleSwitchLEDClockBlink(void){
         }
 
     }else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
+       if(u8ExternalAirWheelActiveFlag == TRUE){
+           u8CurrentInputClockCount++;
+
+           if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
+                u8CurrentInputClockCount = 0;
+            }
+        }
+
+
         if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }else{
@@ -409,6 +418,11 @@ void syncLoop(void){
         u8GatePulseFlag = TRUE;
     }
     setClockSyncFlag();
+    //If clock is being multiplied, keep it synced
+    if(u8ExternalAirWheelActiveFlag == TRUE){
+        resetClockTimer();
+        resetRecClockCount();
+    }
 }
 
 void resetTapTempoMode(void){
@@ -516,9 +530,6 @@ uint32_t calculateTapTempo(void){
 
 void setAvgNumClicksBetweenClocks(uint32_t u32NewNumClicks){
     int i;
-    for(i=0;i<LENGTH_OF_INPUT_CLOCK_ARRAY;i++){
-        u32NumTicksBetweenClocksArray[i] = u32NewNumClicks;
-    }
 
     u32AvgNumTicksBetweenClocks = u32NewNumClicks;
     u32TargetNumTicksBetweenClocks = u32NewNumClicks;
@@ -574,18 +585,12 @@ void regulateClockPlaybackSpeed(void){
     uint32_t u32NewPlaybackSpeed;
     int32_t i32PlaybackSpeedChange;
 
-    i16SecondLogValues[u16LogIndex] = i16Difference;
-
-    //Too few clock counts - clock needs to run faster. Smaller playback speed is faster.
-
-    //Negative means slower, positive means faster
-
     /*If the number of clock ticks between edges changes, then we need to speed up or slow
      * down the playback clock to keep the playback speed constant.
      */
-    //Figure out a way to change the speed proportionally.
-    //The current method has a limited ability to change the playback speed in a way
-    //that matches the change in the number of clocks.
+
+    //Too few clock counts - clock needs to run faster. Smaller playback speed is faster.
+    //Negative means slower, positive means faster
 
     i32PlaybackSpeedChange = u32PlaybackSpeed * i16Difference;
     i32PlaybackSpeedChange /= (int32_t) u32TargetNumTicksBetweenClocks;
@@ -596,41 +601,13 @@ void regulateClockPlaybackSpeed(void){
 
     /*Adjust the clock timer accordingly.*/
     calculateClockTimer(u32PlaybackSpeed);
-    
-//    i16Difference >>= 3;
-//
-//    if(i16Difference > 4){
-//        i16Temp = u16PlaybackSpeedTableIndex + 4;
-//        u8Change = 1;
-//    }else if(i16Difference < -4){
-//        i16Temp = u16PlaybackSpeedTableIndex - 4;
-//        u8Change = 1;
-//    }else{
-//        i16Temp = u16PlaybackSpeedTableIndex + i16Difference;
-//        u8Change = 1;
-//    }
-//
-//    if(u8Change){
-//        if(i16Temp > MINIMUM_SPEED_INDEX && i16Temp < MAXIMUM_SPEED_INDEX){
-//            u16PlaybackSpeedTableIndex = i16Temp;
-//            u32PlaybackSpeed = u32LogSpeedTable[u16PlaybackSpeedTableIndex];
-//            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-//            RESET_SAMPLE_TIMER;
-//
-//            /*Adjust the clock timer accordingly.*/
-//            calculateClockTimer(u32PlaybackSpeed);
-//        }
-//
-//   //     u32TargetNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks;
-//    }
 
-    
+    i16SecondLogValues[u16LogIndex] = i16Difference;
     u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
     
     if(u16LogIndex == LENGTH_OF_LOG){
         u16LogIndex = 0;
     }
-
 }
 
 /*Time quantization
@@ -1307,8 +1284,8 @@ void MasterControlStateMachine(void){
                 if(u8HoldState != ON){
                     if(u16AirwheelData != u16LastAirWheelData){
 
-                        //if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
-                         if(u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
+                        if(u16AirwheelData != 0 && u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
+                        // if(u8PlaybackRunFlag == RUN && u8MenuModeFlag == FALSE){
                             i16AirWheelChange = u16AirwheelData - u16LastAirWheelData;
 
                             //If the data decremented past zero, the new data minus the old will be large.
@@ -1333,14 +1310,14 @@ void MasterControlStateMachine(void){
                                     u16LastAirWheelData = u16AirwheelData;
                                     u8NewPlaybackSpeedClockedFlag = TRUE;
                                     u8ExternalAirWheelActiveFlag = TRUE;
-                                    u32NewClockClicks = u32AvgNumTicksBetweenClocks<<1;
+                                    u32NewClockClicks = u32TargetNumTicksBetweenClocks<<1;
                                 }else if(i16AirWheelChange <= -32){
                                     //Divide the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed<<1;
                                     u16LastAirWheelData = u16AirwheelData;
                                     u8NewPlaybackSpeedClockedFlag = TRUE;
                                     u8ExternalAirWheelActiveFlag = TRUE;
-                                    u32NewClockClicks = u32AvgNumTicksBetweenClocks>>1;
+                                    u32NewClockClicks = u32TargetNumTicksBetweenClocks>>1;
                                 }
                             }
                         }

@@ -472,7 +472,7 @@ void vTIM3InterruptHandler(void){
         if(getPlaybackRunStatus() == RUN || u8TapTempoSetFlag == TRUE){
             if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
 
-//                u8ExternalAirWheelActiveFlag = getu8ExternalAirWheelActiveFlag();
+                u8ExternalAirWheelActiveFlag = getu8ExternalAirWheelActiveFlag();
 
                 /*If record is sync'ed to external then clock pulses are
                  * duplicated from the record input.
@@ -483,12 +483,11 @@ void vTIM3InterruptHandler(void){
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
                     setClockTriggerFlag();//Let master control know a clock edge occurred.
+                }else if(u8ExternalAirWheelActiveFlag == TRUE){
+                    handleSwitchLEDClockBlink();
+                    SET_LOOP_SYNC_OUT;
+                    u8ClockPulseFlag = TRUE;
                 }
-                    //                }else if(u8ExternalAirWheelActiveFlag == TRUE){
-//                    handleSwitchLEDClockBlink();
-//                    SET_LOOP_SYNC_OUT;
-//                    u8ClockPulseFlag = TRUE;
-//                }
                 u32ClockTimer = 0;
             }
         }
