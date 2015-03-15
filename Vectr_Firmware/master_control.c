@@ -61,6 +61,8 @@
 //Deal with the clock trigger in external mode if the speed has been quantize changed.
 //Then we'll have to count real triggers and keep the math working.
 //TODO: Separate out the LED blinking in playback so it can be called from the timer routine.
+//TODO: Place limits on the speed change
+//TODO: Get the transition from live play to playback to go smoothly.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -144,6 +146,7 @@ static uint32_t u32NewPlaybackSpeedClocked;
 static uint8_t u8NewPlaybackSpeedClockedFlag;
 static uint32_t u32NewClockClicks;
 static uint8_t u8ExternalAirWheelActiveFlag;
+static uint8_t u8ExternalAirWheelActiveSyncFlag;
 
 static uint8_t u8MultiTapTriggerTimer;
 #define MULTI_TAP_TIMER_RESET   50
@@ -317,8 +320,9 @@ uint8_t handleClock(void){
     else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
         /*This state is for playback or for overdubbing when playback isn't running.*/
 
-        if(u8CurrentInputClockCount == 0){
+        if(u8CurrentInputClockCount == 0 || u8ExternalAirWheelActiveSyncFlag == TRUE){
             syncLoop();
+            u8ExternalAirWheelActiveSyncFlag = FALSE;
         }
         
         if(u8ExternalAirWheelActiveFlag == FALSE){
@@ -385,6 +389,7 @@ void handleSwitchLEDClockBlink(void){
 
            if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
                 u8CurrentInputClockCount = 0;
+                u8ExternalAirWheelActiveSyncFlag = TRUE;
             }
         }
 
@@ -574,6 +579,8 @@ uint16_t  u16LogIndex;
 uint32_t u32LogValues[LENGTH_OF_LOG];
 int16_t i16SecondLogValues[LENGTH_OF_LOG];
 
+static uint8_t u8SkipClockEdge = FALSE;
+
 /* When the record input is being used to synchronize playback,
  * this function will speed up and slow down the playback clock to keep
  * the number of ticks between clock edges constant.
@@ -581,7 +588,7 @@ int16_t i16SecondLogValues[LENGTH_OF_LOG];
 void regulateClockPlaybackSpeed(void){
     int16_t i16Temp;
     uint8_t u8Change = 0;
-    int16_t i16Difference = u32AvgNumTicksBetweenClocks- u32TargetNumTicksBetweenClocks;
+    int16_t i16Difference = u32AvgNumTicksBetweenClocks - u32TargetNumTicksBetweenClocks;
     uint32_t u32NewPlaybackSpeed;
     int32_t i32PlaybackSpeedChange;
 
@@ -591,22 +598,25 @@ void regulateClockPlaybackSpeed(void){
 
     //Too few clock counts - clock needs to run faster. Smaller playback speed is faster.
     //Negative means slower, positive means faster
+    if(u8SkipClockEdge == FALSE){
+        i32PlaybackSpeedChange = u32PlaybackSpeed * i16Difference;
+        i32PlaybackSpeedChange /= (int32_t) u32TargetNumTicksBetweenClocks;
+        u32NewPlaybackSpeed = u32PlaybackSpeed + i32PlaybackSpeedChange;
+        u32PlaybackSpeed = u32NewPlaybackSpeed;
+        SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+        RESET_SAMPLE_TIMER;
 
-    i32PlaybackSpeedChange = u32PlaybackSpeed * i16Difference;
-    i32PlaybackSpeedChange /= (int32_t) u32TargetNumTicksBetweenClocks;
-    u32NewPlaybackSpeed = u32PlaybackSpeed + i32PlaybackSpeedChange;
-    u32PlaybackSpeed = u32NewPlaybackSpeed;
-    SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-    RESET_SAMPLE_TIMER;
+        /*Adjust the clock timer accordingly.*/
+        calculateClockTimer(u32PlaybackSpeed);
 
-    /*Adjust the clock timer accordingly.*/
-    calculateClockTimer(u32PlaybackSpeed);
+        i16SecondLogValues[u16LogIndex] = i16Difference;
+        u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
 
-    i16SecondLogValues[u16LogIndex] = i16Difference;
-    u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
-    
-    if(u16LogIndex == LENGTH_OF_LOG){
-        u16LogIndex = 0;
+        if(u16LogIndex == LENGTH_OF_LOG){
+            u16LogIndex = 0;
+        }
+    }else{
+        u8SkipClockEdge = FALSE;
     }
 }
 
@@ -4160,6 +4170,8 @@ void setPlaybackRunStatus(uint8_t u8NewState){
     else{
         STOP_CLOCK_TIMER;
     }
+
+    u8SkipClockEdge = TRUE;//Keep the clock from getting goofy
 
     u8OverdubRunFlag = u8PlaybackRunFlag;
 }
