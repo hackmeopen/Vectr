@@ -44,25 +44,21 @@
 //TODO: Test - Deal with clock sync during flash playback.
 //TODO: Test- Add tap tempo to playback. make it so the clock can keep running and update to new speeds. Maybe during tap tempo the speed averaging the handle clock
 // routine doesn't work.
+//TODO: Test - Quantized external speed changes not working right. Maybe double the clock
+//TODO: Test - Get back to one clock number.
+//TODO: Test - Implement clock divisions to do the quantized speed changes. Deal with the clock trigger in external mode?
+//TODO: Test - Separate out the LED blinking in playback so it can be called from the timer routine.
 
 //TODO: Improve entering and exiting time quantization.
-//TODO: Z decay not working in overdub.
-
 //TODO: Figure out what to do with clocks during hold. Test and see what happens.
 //TODO: Handle record clock during air scratching.
 //TODO: Deal with gated modes and clock.
-//TODO: Test what happens when the number of clocks is changed during playback and such.
 //TODO: Work on the quantization. Make sure values are correct.
+//TODO: Test external clocking with sequencing mode.
 //TODO: Change major to minor in the quantization.
-
-//TODO: Quantized external speed changes not working right. Maybe double the clock
-//TODO: Get back to one clock number.
-//TODO: Implement clock divisions to do the quantized speed changes. Deal with the clock trigger in external mode?
-//Deal with the clock trigger in external mode if the speed has been quantize changed.
-//Then we'll have to count real triggers and keep the math working.
-//TODO: Separate out the LED blinking in playback so it can be called from the timer routine.
 //TODO: Place limits on the speed change
 //TODO: Get the transition from live play to playback to go smoothly.
+//TODO: Something is potentially wonky with the external airwheel clock. Odd LED blink timing.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -290,7 +286,7 @@ uint8_t handleClock(void){
      * 2. We also want to start and stop the playback based on whether or not the
      */
     if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
-        u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getRecClockCount();
+        u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getLastRecClockCount();
        // resetRecClockCount();
         u8CurrentClockArrayIndex++;
         if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
@@ -340,7 +336,7 @@ uint8_t handleClock(void){
         if(u8NewPlaybackSpeedClockedFlag != TRUE){
 
             //calculateAvgNumClicksBetweenClocks();
-            u32AvgNumTicksBetweenClocks = getRecClockCount();
+            u32AvgNumTicksBetweenClocks = getLastRecClockCount();
         }else{
             //The speed changed. Need to update.
             u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
@@ -383,7 +379,7 @@ void handleSwitchLEDClockBlink(void){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }
 
-    }else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
+    }else if(u8OperatingMode == PLAYBACK){
        if(u8ExternalAirWheelActiveFlag == TRUE){
            u8CurrentInputClockCount++;
 
@@ -403,7 +399,30 @@ void handleSwitchLEDClockBlink(void){
                 setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
             }
         }
+    }else if(u8OperatingMode == OVERDUBBING){
+        if(u8ExternalAirWheelActiveFlag == TRUE){
+           u8CurrentInputClockCount++;
 
+           if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
+                u8CurrentInputClockCount = 0;
+                u8ExternalAirWheelActiveSyncFlag = TRUE;
+            }
+        }
+
+
+        if(u8CurrentInputClockCount != 0){
+            if(u8CurrentInputClockCount & 1 && (u8CurrentInputClockCount != u8ClockLengthOfRecordedSequence - 1)){
+                setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            }else{
+                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+            }
+        }else{
+            if(u8ClockLengthOfRecordedSequence > 1){
+                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+            }else{
+                setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            }
+        }
     }else{
         //This mode is for Live Play Mode when tap tempo has been activated.
         if(u8CurrentInputClockCount != 0){
@@ -1314,14 +1333,14 @@ void MasterControlStateMachine(void){
                             }
                             else{
                                 //Externally clocked. Work in binary increments.
-                                if(i16AirWheelChange >= 32){
+                                if(i16AirWheelChange >= 24){
                                     //Multiply the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed>>1;//Lower number makes the clock faster
                                     u16LastAirWheelData = u16AirwheelData;
                                     u8NewPlaybackSpeedClockedFlag = TRUE;
                                     u8ExternalAirWheelActiveFlag = TRUE;
                                     u32NewClockClicks = u32TargetNumTicksBetweenClocks<<1;
-                                }else if(i16AirWheelChange <= -32){
+                                }else if(i16AirWheelChange <= -24){
                                     //Divide the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed<<1;
                                     u16LastAirWheelData = u16AirwheelData;
@@ -1468,7 +1487,7 @@ void MasterControlStateMachine(void){
                              */
                             u16NumRecordClocks = getRecClockCount();
                             if(u16NumRecordClocks > u32ExpectedNumTicksBetweenClocks){
-                             setPlaybackRunStatus(PAUSED);
+                                setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }

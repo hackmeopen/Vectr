@@ -454,6 +454,10 @@ void resetRecClockCount(void){
 }
 
 uint32_t getRecClockCount(void){
+    return u32RecClockCount;
+}
+
+uint32_t getLastRecClockCount(void){
     return u32LastRecClockCount;
 }
 
