@@ -50,7 +50,6 @@
 //TODO: Test - Separate out the LED blinking in playback so it can be called from the timer routine.
 
 //TODO: Improve entering and exiting time quantization.
-//TODO: Figure out what to do with clocks during hold. Test and see what happens.
 //TODO: Handle record clock during air scratching.
 //TODO: Deal with gated modes and clock.
 //TODO: Work on the quantization. Make sure values are correct.
@@ -58,7 +57,10 @@
 //TODO: Change major to minor in the quantization.
 //TODO: Place limits on the speed change
 //TODO: Get the transition from live play to playback to go smoothly.
-//TODO: Something is potentially wonky with the external airwheel clock. Odd LED blink timing.
+//TODO: Something is potentially wonky with the external airwheel clock. Odd LED blink timing. -esp. when slowed down
+//TODO: Hold during playback activation is not perfect.
+//TODO: Forward airwheel seems to go four times as fast instead of 2 times.
+
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -2151,7 +2153,6 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
             holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
             //Handle the gate output
             gateHandler(p_mem_pos_and_gesture_struct);
-            setClockEnableFlag(FALSE);
        }
 
         
@@ -2159,12 +2160,9 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
        /*Check encoder activations. Could go to live play or implement a hold*/
         if(u8HoldActivationFlag == HOLD_ACTIVATE){
             u8HoldState = ON;
-            STOP_CLOCK_TIMER;
             setHoldPosition(p_mem_pos_and_gesture_struct);
-            u8HoldActivationFlag = FALSE;
         }
         else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
-            START_CLOCK_TIMER;
             u8HoldState = OFF;
         } 
 
