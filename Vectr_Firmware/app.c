@@ -450,7 +450,7 @@ void setClockEnableFlag(uint8_t u8NewState){
 
 void resetRecClockCount(void){
     u32RecClockCount = 0;
-    u32ClockTimer = u32ClockTimerTriggerCount;
+  //  u32ClockTimer = u32ClockTimerTriggerCount;
 }
 
 uint32_t getRecClockCount(void){

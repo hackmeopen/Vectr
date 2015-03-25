@@ -48,20 +48,13 @@
 //TODO: Test - Get back to one clock number.
 //TODO: Test - Implement clock divisions to do the quantized speed changes. Deal with the clock trigger in external mode?
 //TODO: Test - Separate out the LED blinking in playback so it can be called from the timer routine.
+//TODO: TEST- Change major to minor in the quantization.
 
-//TODO: Improve entering and exiting time quantization.
-//TODO: Handle record clock during air scratching.
+
 //TODO: Deal with gated modes and clock.
-//TODO: Work on the quantization. Make sure values are correct.
 //TODO: Test external clocking with sequencing mode.
-//TODO: Change major to minor in the quantization.
-//TODO: Place limits on the speed change
-//TODO: Get the transition from live play to playback to go smoothly.
-//TODO: Something is potentially wonky with the external airwheel clock. Odd LED blink timing. -esp. when slowed down
-//TODO: Hold during playback activation is not perfect.
-//TODO: Forward airwheel seems to go four times as fast instead of 2 times.
-
-
+//TODO: Handle record clock during air scratching.
+//TODO: Negative range doesnt go all the way to -5V
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -130,6 +123,7 @@ static uint32_t u32NextClockPulseIndex;
 
 static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
+static uint32_t u32AirScratchNeutralPlaybackSpeed;
 
 static uint8_t u8TapTempoModeActiveFlag;
 static uint8_t u8TapTempoKeyPressFlag;
@@ -145,6 +139,11 @@ static uint8_t u8NewPlaybackSpeedClockedFlag;
 static uint32_t u32NewClockClicks;
 static uint8_t u8ExternalAirWheelActiveFlag;
 static uint8_t u8ExternalAirWheelActiveSyncFlag;
+static uint8_t u8ExternalAirwheelClockDelayCount;
+static uint8_t u8ExternalAirwheelClockDelay;
+
+#define EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT 32
+
 
 static uint8_t u8MultiTapTriggerTimer;
 #define MULTI_TAP_TIMER_RESET   50
@@ -318,9 +317,20 @@ uint8_t handleClock(void){
     else if(u8OperatingMode == PLAYBACK || u8OperatingMode == OVERDUBBING){
         /*This state is for playback or for overdubbing when playback isn't running.*/
 
-        if(u8CurrentInputClockCount == 0 || u8ExternalAirWheelActiveSyncFlag == TRUE){
+        if(u8CurrentInputClockCount == 0 && u8ExternalAirWheelActiveFlag == FALSE){
             syncLoop();
-            u8ExternalAirWheelActiveSyncFlag = FALSE;
+        }else if(u8ExternalAirWheelActiveSyncFlag == TRUE){
+           
+            if(u8ExternalAirwheelClockDelayCount-- == 0){
+                syncLoop();
+               u8ExternalAirWheelActiveSyncFlag = FALSE;
+               u8CurrentInputClockCount = 0;
+               if(u8ClockLengthOfRecordedSequence > 1){
+                    setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+                }else{
+                    setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+                }
+            }
         }
         
         if(u8ExternalAirWheelActiveFlag == FALSE){
@@ -369,6 +379,8 @@ uint8_t handleClock(void){
     }
 }
 
+
+
 void handleSwitchLEDClockBlink(void){
     
     if(u8OperatingMode == RECORDING){
@@ -382,25 +394,29 @@ void handleSwitchLEDClockBlink(void){
         }
 
     }else if(u8OperatingMode == PLAYBACK){
-       if(u8ExternalAirWheelActiveFlag == TRUE){
-           u8CurrentInputClockCount++;
+        if(u8ExternalAirWheelActiveSyncFlag ==  FALSE){
+            if(u8ExternalAirWheelActiveFlag == TRUE){
+               u8CurrentInputClockCount++;
 
-           if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
-                u8CurrentInputClockCount = 0;
-                u8ExternalAirWheelActiveSyncFlag = TRUE;
+               if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence - 1){
+                   // u8CurrentInputClockCount = 0;
+                    u8ExternalAirWheelActiveSyncFlag = TRUE;
+                    u8ExternalAirwheelClockDelayCount = u8ExternalAirwheelClockDelay;
+                }
             }
-        }
 
 
-        if(u8CurrentInputClockCount != 0){
-            setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
-        }else{
-            if(u8ClockLengthOfRecordedSequence > 1){
-                setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
-            }else{
+            if(u8CurrentInputClockCount != 0){
                 setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            }else{
+                if(u8ClockLengthOfRecordedSequence > 1){
+                    setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+                }else{
+                    setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+                }
             }
         }
+
     }else if(u8OperatingMode == OVERDUBBING){
         if(u8ExternalAirWheelActiveFlag == TRUE){
            u8CurrentInputClockCount++;
@@ -595,8 +611,8 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
     return u32AvgNumTicksBetweenClocks;
 }
 
-#define LENGTH_OF_LOG  32
-uint16_t  u16LogIndex;
+#define LENGTH_OF_LOG  200
+uint16_t  u16LogIndex = 0;
 uint32_t u32LogValues[LENGTH_OF_LOG];
 int16_t i16SecondLogValues[LENGTH_OF_LOG];
 
@@ -915,6 +931,11 @@ void MasterControlStateMachine(void){
                     last_position_data.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
                     hold_position_struct.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
                 }
+                else{
+                  //  u8HandHoldFlag = TRUE;
+                    last_position_data.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+                    hold_position_struct.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+                }
             }
 
             handleTimeQuantization(&pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
@@ -934,6 +955,13 @@ void MasterControlStateMachine(void){
             linearizePosition(&pos_and_gesture_struct);
             scaleRange(&pos_and_gesture_struct);
             quantizePosition(&pos_and_gesture_struct);
+
+            u32LogValues[u16LogIndex] = pos_and_gesture_struct.u16XPosition;
+
+            if(u16LogIndex++ == LENGTH_OF_LOG){
+                u16LogIndex = 0;
+            }
+
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
@@ -1335,20 +1363,35 @@ void MasterControlStateMachine(void){
                             }
                             else{
                                 //Externally clocked. Work in binary increments.
-                                if(i16AirWheelChange >= 24){
+                                if(i16AirWheelChange >= EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT){
                                     //Multiply the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed>>1;//Lower number makes the clock faster
                                     u16LastAirWheelData = u16AirwheelData;
-                                    u8NewPlaybackSpeedClockedFlag = TRUE;
-                                    u8ExternalAirWheelActiveFlag = TRUE;
-                                    u32NewClockClicks = u32TargetNumTicksBetweenClocks<<1;
-                                }else if(i16AirWheelChange <= -24){
+                                    if(u32NewPlaybackSpeedClocked > FASTEST_SPEED){
+                                        turnOffAllLEDs();
+                                        u16LastAirWheelData = u16AirwheelData;
+                                        u8NewPlaybackSpeedClockedFlag = TRUE;
+                                        u8ExternalAirWheelActiveFlag = TRUE;
+                                        u32NewClockClicks = u32TargetNumTicksBetweenClocks<<1;
+                                        if(u8ExternalAirwheelClockDelay > 0){
+                                            u8ExternalAirwheelClockDelay>>=1;
+                                        }
+                                    }
+                                }else if(i16AirWheelChange <= -EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT){
                                     //Divide the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed<<1;
                                     u16LastAirWheelData = u16AirwheelData;
-                                    u8NewPlaybackSpeedClockedFlag = TRUE;
-                                    u8ExternalAirWheelActiveFlag = TRUE;
-                                    u32NewClockClicks = u32TargetNumTicksBetweenClocks>>1;
+                                    if(u32NewPlaybackSpeedClocked < SLOWEST_SPEED){
+                                        turnOffAllLEDs();
+                                        u8NewPlaybackSpeedClockedFlag = TRUE;
+                                        u8ExternalAirWheelActiveFlag = TRUE;
+                                        u32NewClockClicks = u32TargetNumTicksBetweenClocks>>1;
+                                        if(u8ExternalAirwheelClockDelay != 0){
+                                            u8ExternalAirwheelClockDelay<<=1;
+                                        }else{
+                                            u8ExternalAirwheelClockDelay=1;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1660,6 +1703,11 @@ void MasterControlStateMachine(void){
                     xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
                     
                 }
+            }
+
+            //Clear the flag
+            if(u8LivePlayActivationFlag == TRUE){
+                u8LivePlayActivationFlag = FALSE;
             }
 
             if(u8SyncTrigger == TRUE){
@@ -2116,7 +2164,7 @@ void defaultSettings(void){
     VectrData.u16Linearity[X_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Y_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
     VectrData.u16Linearity[Z_OUTPUT_INDEX] = LINEARITY_STRAIGHT;
-    VectrData.u8NumClocks = CLOCK_PULSE_8;
+    VectrData.u8NumClocks = CLOCK_PULSE_16;
     VectrData.u8TimeQuantization[X_OUTPUT_INDEX] = FALSE;
     VectrData.u8TimeQuantization[Y_OUTPUT_INDEX] = FALSE;
     VectrData.u8TimeQuantization[Z_OUTPUT_INDEX] = FALSE;
@@ -2402,6 +2450,7 @@ void enterOverdubMode(void){
 }
 
 void enterAirScratchMode(void){
+    u32AirScratchNeutralPlaybackSpeed = u32PlaybackSpeed;
     u8PreviousOperatingMode = u8OperatingMode;
     u8OperatingMode = AIR_SCRATCHING;
     u8AirScratchRunFlag = FALSE;
@@ -2604,7 +2653,7 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
             
                 break;
             case MAJOR:
-                u16CurrentPosition[i] = scaleSearch(u16MajorScale, u16temp, LENGTH_OF_MAJOR_SCALE);
+                u16CurrentPosition[i] = scaleSearch(u16MinorScale, u16temp, LENGTH_OF_MINOR_SCALE);
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
                     u8QuantizationGateFlag = TRUE;
                 }
@@ -3103,6 +3152,7 @@ void startNewRecording(void){
     memBuffer.sample_2.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
     u8BufferDataCount = 1;
     u8ExternalAirWheelActiveFlag = FALSE;
+    u8ExternalAirwheelClockDelay = 0;
 
     setSwitchLEDState(SWITCH_LED_RED_BLINKING); 
 

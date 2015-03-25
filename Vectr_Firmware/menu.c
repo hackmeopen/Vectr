@@ -388,7 +388,7 @@ void MenuStateMachine(void){
     }
 }
 
-#define DEBOUNCE_TIMER_RESET    25
+#define DEBOUNCE_TIMER_RESET    35
 
 /*The encoder can be used when not in menu mode to return to live play from
  * another mode by turning two clicks to the right. A hold command can be toggled
@@ -407,7 +407,7 @@ void encoderLiveInteraction(void){
         if(i16EncoderState >= i16EncoderLiveZeroPosition+LIVE_PLAY_ACTIVATION_CLICKS){
             setLivePlayActivationFlag();
             i16EncoderLiveZeroPosition = i16EncoderState;
-            setClockEnableFlag(FALSE);
+           // setClockEnableFlag(FALSE);
             u8debounceTimer = DEBOUNCE_TIMER_RESET;
         }
         else if(i16EncoderState <= i16EncoderLiveZeroPosition-HOLD_ACTIVATION_CLICKS){
