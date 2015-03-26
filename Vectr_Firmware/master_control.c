@@ -56,6 +56,11 @@
 //TODO: Handle record clock during air scratching.
 //TODO: Negative range doesnt go all the way to -5V
 
+//Maybe for next round if anyone cares:
+//A thorough implementation of the gate behavior should include the number of
+//high periods
+//If we're going gate pulses, then it needs to know how long the gate pulse was.
+
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
 #define MUTE_MODE_GESTURE         MGC3130_DOUBLE_TAP_RIGHT
@@ -3188,13 +3193,14 @@ void finishRecording(void){
     u8HoldState = OFF;
     u8SequenceRecordedFlag = TRUE;
     setStoredSequenceLocationFlag(STORED_IN_RAM);
-    if(u8TapTempoSetFlag == FALSE){
-        calculateClockTimer(u32PlaybackSpeed);
-    }
     setPlaybackDirection(FORWARD_PLAYBACK);
     
+    if(p_VectrData->u8Control[RECORD] != GATE && (u8TapTempoSetFlag == FALSE) ){
+        calculateClockTimer(u32PlaybackSpeed);
+    }
 
-    if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
+    if(p_VectrData->u8Source[RECORD] == EXTERNAL && p_VectrData->u8Control[RECORD] != GATE
+       || u8TapTempoSetFlag == TRUE){
         u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
         u32TargetNumTicksBetweenClocks = calculateAvgNumClicksBetweenClocks();//Needed to change playback speed.
         u8CurrentInputClockCount = 0;
@@ -3207,7 +3213,6 @@ void finishRecording(void){
             u32NumTicksBetweenClocksArray[i] = u32TargetNumTicksBetweenClocks;
         }
     }
-
                  
     if(p_VectrData->u8Control[PLAY] == TRIGGER_AUTO){
         //Initiate a read.

@@ -481,8 +481,8 @@ void vTIM3InterruptHandler(void){
                 /*If record is sync'ed to external then clock pulses are
                  * duplicated from the record input.
                  */
-                if((getCurrentSource(RECORD) != EXTERNAL &&
-                    getCurrentControl(RECORD) != GATE)
+                if((getCurrentSource(RECORD) != EXTERNAL ||
+                    getCurrentControl(RECORD) == GATE)
                     || u8TapTempoSetFlag == TRUE){
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
