@@ -49,17 +49,12 @@
 //TODO: Test - Implement clock divisions to do the quantized speed changes. Deal with the clock trigger in external mode?
 //TODO: Test - Separate out the LED blinking in playback so it can be called from the timer routine.
 //TODO: TEST- Change major to minor in the quantization.
-
-
-//TODO: Deal with gated modes and clock.
+//TODO: Test - Deal with gated modes and clock.
 //TODO: Test external clocking with sequencing mode.
+
 //TODO: Handle record clock during air scratching.
 //TODO: Negative range doesnt go all the way to -5V
 
-//Maybe for next round if anyone cares:
-//A thorough implementation of the gate behavior should include the number of
-//high periods
-//If we're going gate pulses, then it needs to know how long the gate pulse was.
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
 #define OVERDUB_MODE_GESTURE        MGC3130_DOUBLE_TAP_CENTER
@@ -128,7 +123,7 @@ static uint32_t u32NextClockPulseIndex;
 
 static uint16_t u16LastScratchPosition;
 static uint16_t u16CurrentScratchSpeedIndex;
-static uint32_t u32AirScratchNeutralPlaybackSpeed;
+static uint32_t u32AirScratchPlaybackSpeed;
 
 static uint8_t u8TapTempoModeActiveFlag;
 static uint8_t u8TapTempoKeyPressFlag;
@@ -398,7 +393,7 @@ void handleSwitchLEDClockBlink(void){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }
 
-    }else if(u8OperatingMode == PLAYBACK){
+    }else if(u8OperatingMode == PLAYBACK || u8OperatingMode == SEQUENCING){
         if(u8ExternalAirWheelActiveSyncFlag ==  FALSE){
             if(u8ExternalAirWheelActiveFlag == TRUE){
                u8CurrentInputClockCount++;
@@ -446,12 +441,30 @@ void handleSwitchLEDClockBlink(void){
                 setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
             }
         }
-    }else{
+    }else if(u8OperatingMode == LIVE_PLAY){
         //This mode is for Live Play Mode when tap tempo has been activated.
         if(u8CurrentInputClockCount != 0){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }else{
             setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+        }
+    }else if(u8OperatingMode == AIR_SCRATCHING){
+        if(u8AirScratchRunFlag == FALSE){
+            if(u8CurrentInputClockCount != 0){
+                if(u8CurrentInputClockCount & 1){ //&& (u8CurrentInputClockCount != u8ClockLengthOfRecordedSequence - 1)){
+                    setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+                }else{
+                    setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+                }
+            }else{
+                if(u8ClockLengthOfRecordedSequence > 1){
+                    setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+                }else{
+                    setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+                }
+            }
+        }else{
+            setSwitchLEDState(SWITCH_LED_RED_GREEN_ALTERNATING);
         }
     }
 }
@@ -2124,6 +2137,15 @@ void MasterControlStateMachine(void){
                 }
             }
 
+            if(p_VectrData->u8Source[RECORD] == EXTERNAL
+               && (u8RecordTrigger == TRIGGER_WENT_HIGH)
+               ||
+               (p_VectrData->u8Source[PLAYBACK] == SWITCH
+                && u8ClockTriggerFlag == TRUE)){
+                    handleClock();
+                    u8ClockTriggerFlag = FALSE;
+            }
+
             /*Keep track of airwheel data but don't do anything about it*/
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
             u16LastAirWheelData = u16AirwheelData;
@@ -2282,6 +2304,8 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct){
     }
 
     if(u8AirScratchRunFlag == TRUE && u8HandPresentFlag == TRUE){
+        //If air scratch is on, and the hand is present, hand movements control playback.
+
         i32Movement =  u16NewScratchData - u16LastScratchPosition;
         i32Movement >>= 5;//Scale down to the size of the table.
 
@@ -2294,9 +2318,9 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct){
             if(i32Movement >= LENGTH_OF_LOG_TABLE){
                 i32Movement = LENGTH_OF_LOG_TABLE - 1;
             }
-            u32PlaybackSpeed = u32LogSpeedTable[i32Movement];
+            u32AirScratchPlaybackSpeed = u32LogSpeedTable[i32Movement];
             u16CurrentScratchSpeedIndex = i32Movement;
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            SET_SAMPLE_TIMER_PERIOD(u32AirScratchPlaybackSpeed);
             RESET_SAMPLE_TIMER;
         }
         else if(i32Movement < -2){
@@ -2304,12 +2328,12 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct){
             //Downward hand movement.
             u8PlaybackRunFlag = TRUE;
             i32Movement = u16PlaybackSpeedTableIndex - i32Movement;
-            if(i32Movement >= LENGTH_OF_LOG_TABLE){
-                i32Movement = LENGTH_OF_LOG_TABLE - 1;
+            if(i32Movement < 0){
+                i32Movement = 0;
             }
-            u32PlaybackSpeed = u32LogSpeedTable[i32Movement];
+            u32AirScratchPlaybackSpeed = u32LogSpeedTable[i32Movement];
             u16CurrentScratchSpeedIndex = i32Movement;
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            SET_SAMPLE_TIMER_PERIOD(u32AirScratchPlaybackSpeed);
             RESET_SAMPLE_TIMER;
         }
         else{
@@ -2326,8 +2350,8 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct){
                 u16CurrentScratchSpeedIndex = u16PlaybackSpeedTableIndex;
             }
 
-            u32PlaybackSpeed = u32LogSpeedTable[u16CurrentScratchSpeedIndex];
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            u32AirScratchPlaybackSpeed = u32LogSpeedTable[u16CurrentScratchSpeedIndex];
+            SET_SAMPLE_TIMER_PERIOD(u32AirScratchPlaybackSpeed);
             RESET_SAMPLE_TIMER;
         }
         else if(u16CurrentScratchSpeedIndex < u16PlaybackSpeedTableIndex){
@@ -2337,8 +2361,8 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct){
                 u16CurrentScratchSpeedIndex = u16PlaybackSpeedTableIndex;
             }
 
-            u32PlaybackSpeed = u32LogSpeedTable[u16CurrentScratchSpeedIndex];
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            u32AirScratchPlaybackSpeed = u32LogSpeedTable[u16CurrentScratchSpeedIndex];
+            SET_SAMPLE_TIMER_PERIOD(u32AirScratchPlaybackSpeed);
             RESET_SAMPLE_TIMER;
         }
     }
@@ -2349,7 +2373,6 @@ void runAirScratchMode(pos_and_gesture_data * p_pos_and_gesture_struct){
     }else{
         u8LastHandPresentFlag = FALSE;
     }
-
 }
 
 
@@ -2455,11 +2478,18 @@ void enterOverdubMode(void){
 }
 
 void enterAirScratchMode(void){
-    u32AirScratchNeutralPlaybackSpeed = u32PlaybackSpeed;
+    uint32_t u32TableSpeed = u32LogSpeedTable[LENGTH_OF_LOG_TABLE-1];
+    u16CurrentScratchSpeedIndex = LENGTH_OF_LOG_TABLE-1;
+    
+    while(u32TableSpeed < u32PlaybackSpeed){
+        u32TableSpeed = u32LogSpeedTable[u16CurrentScratchSpeedIndex];
+        u16CurrentScratchSpeedIndex--;
+    }
+    u16PlaybackSpeedTableIndex = u16CurrentScratchSpeedIndex;
+    u32AirScratchPlaybackSpeed = u32TableSpeed;
     u8PreviousOperatingMode = u8OperatingMode;
     u8OperatingMode = AIR_SCRATCHING;
     u8AirScratchRunFlag = FALSE;
-    u16CurrentScratchSpeedIndex = u16PlaybackSpeedTableIndex;
     setSwitchLEDState(SWITCH_LED_RED_GREEN_ALTERNATING);
 }
 
@@ -3195,7 +3225,7 @@ void finishRecording(void){
     setStoredSequenceLocationFlag(STORED_IN_RAM);
     setPlaybackDirection(FORWARD_PLAYBACK);
     
-    if(p_VectrData->u8Control[RECORD] != GATE && (u8TapTempoSetFlag == FALSE) ){
+    if((u8TapTempoSetFlag == FALSE) ){
         calculateClockTimer(u32PlaybackSpeed);
     }
 
