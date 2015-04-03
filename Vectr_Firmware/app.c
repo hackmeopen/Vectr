@@ -487,10 +487,12 @@ void vTIM3InterruptHandler(void){
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
                     setClockTriggerFlag();//Let master control know a clock edge occurred.
+
                 }else if(u8ExternalAirWheelActiveFlag == TRUE){
                     handleSwitchLEDClockBlink();
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
+                    
                 }
                 u32ClockTimer = 0;
             }
@@ -722,8 +724,10 @@ void vPinChangeInterruptHandler(void){
             event_message.u16messageType = RECORD_IN_EVENT;
             event_message.u16message = u8RecordInState;
             xQueueSendFromISR(xIOEventQueue, &event_message, 0);
-            u32LastRecClockCount = u32RecClockCount;
-            u32RecClockCount = 0;
+            if((u8PortEState & 1<<RECORD_IN_PIN) == 0){
+                u32LastRecClockCount = u32RecClockCount;
+                u32RecClockCount = 0;
+            }
         }
 
         if((u8PortELastState & (1<<SYNC_IN_PIN)) != (u8PortEState & (1<<SYNC_IN_PIN))){

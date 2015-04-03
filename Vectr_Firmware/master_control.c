@@ -10,10 +10,6 @@
 #include "dac.h"
 #include "quantization_tables.h"
 
-//TODO: Figure out what it takes to update the MGC3130 library
-//TODO: Specify a solution for microchip demos
-//TODO: Make LEDs dim or add screen saver mode when inactive for 5 minutes.
-
 //TODO: Test - TRIGA menu setting and function.
 //TODO: Test - Change the record input - Use the record input to keep synchronized
 //TODO: Test - Add the above behaviors to Overdub as well.
@@ -51,9 +47,14 @@
 //TODO: TEST- Change major to minor in the quantization.
 //TODO: Test - Deal with gated modes and clock.
 //TODO: Test external clocking with sequencing mode.
+//TODO: Test - Handle record clock during air scratching.
+//TODO: Test - Check clocks with effects.
 
-//TODO: Handle record clock during air scratching.
+
 //TODO: Negative range doesnt go all the way to -5V
+//TODO: Figure out what it takes to update the MGC3130 library
+//TODO: Specify a solution for microchip demos
+//TODO: Make LEDs dim or add screen saver mode when inactive for 5 minutes.
 
 
 #define MENU_MODE_GESTURE           MGC3130_DOUBLE_TAP_BOTTOM
@@ -259,6 +260,11 @@ void resetInputClockHandling(void){
     }
 }
 
+#define LENGTH_OF_LOG  200
+uint16_t  u16LogIndex = 0;
+uint32_t u32LogValues[LENGTH_OF_LOG];
+int16_t i16SecondLogValues[LENGTH_OF_LOG];
+
 /*This function handles the record clock input.
  * It counts clock pulses.
  * For recording mode, it counts clock pulses and lets the main master control
@@ -292,6 +298,12 @@ uint8_t handleClock(void){
         u8CurrentClockArrayIndex++;
         if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
             u8CurrentClockArrayIndex = 0;
+        }
+        
+        u32LogValues[u16LogIndex]= u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex];
+
+        if(u16LogIndex++ > LENGTH_OF_LOG){
+            u16LogIndex = 0;
         }
 
         //With external recording, the clock output mirrors the clock input
@@ -629,10 +641,7 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
     return u32AvgNumTicksBetweenClocks;
 }
 
-#define LENGTH_OF_LOG  200
-uint16_t  u16LogIndex = 0;
-uint32_t u32LogValues[LENGTH_OF_LOG];
-int16_t i16SecondLogValues[LENGTH_OF_LOG];
+
 
 static uint8_t u8SkipClockEdge = FALSE;
 
@@ -664,12 +673,12 @@ void regulateClockPlaybackSpeed(void){
         /*Adjust the clock timer accordingly.*/
         calculateClockTimer(u32PlaybackSpeed);
 
-        i16SecondLogValues[u16LogIndex] = i16Difference;
-        u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
-
-        if(u16LogIndex == LENGTH_OF_LOG){
-            u16LogIndex = 0;
-        }
+//        i16SecondLogValues[u16LogIndex] = i16Difference;
+//        u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
+//
+//        if(u16LogIndex == LENGTH_OF_LOG){
+//            u16LogIndex = 0;
+//        }
     }else{
         u8SkipClockEdge = FALSE;
     }
@@ -772,7 +781,7 @@ void MasterControlStateMachine(void){
     u8HoldActivationFlag = NO_HOLD_EVENT;
     
     //This sample flag is set by the Timer 4/5 32 bit timer. It's timing is controlled by the speed parameter
-    u8SampleTimerFlag = xSemaphoreTake(xSemaphoreSampleTimer, 7*TICKS_PER_MS);
+    u8SampleTimerFlag = xSemaphoreTake(xSemaphoreSampleTimer, 6*TICKS_PER_MS);
 
     //This queue receives position and gesture data from the I2C algorithm
     if(xQueueReceive(xPositionQueue, &pos_and_gesture_struct, 0)){
@@ -780,12 +789,16 @@ void MasterControlStateMachine(void){
         last_position_data.u16XPosition = pos_and_gesture_struct.u16XPosition;
         last_position_data.u16YPosition = pos_and_gesture_struct.u16YPosition;
         last_position_data.u16ZPosition = pos_and_gesture_struct.u16ZPosition;
+        last_position_data.u16Gesture = pos_and_gesture_struct.u16Gesture;
+        last_position_data.u16Touch = pos_and_gesture_struct.u16Touch;
     }
     else{
         u8MessageReceivedFlag = FALSE;
         pos_and_gesture_struct.u16XPosition = last_position_data.u16XPosition;
         pos_and_gesture_struct.u16YPosition = last_position_data.u16YPosition;
         pos_and_gesture_struct.u16ZPosition = last_position_data.u16ZPosition;
+        pos_and_gesture_struct.u16Gesture = last_position_data.u16Gesture;
+        pos_and_gesture_struct.u16Touch = last_position_data.u16Touch;
     }
 
     //Run menu mode if it's active. The encoder is either used for menu mode or for
@@ -914,8 +927,6 @@ void MasterControlStateMachine(void){
                 }
             }
 
-            
-
             if(u8HandPresentFlag == FALSE && u8HoldState == OFF){
                 u8HoldActivationFlag = HOLD_ACTIVATE;
                 u8HandHoldFlag =  TRUE;
@@ -974,11 +985,11 @@ void MasterControlStateMachine(void){
             scaleRange(&pos_and_gesture_struct);
             quantizePosition(&pos_and_gesture_struct);
 
-            u32LogValues[u16LogIndex] = pos_and_gesture_struct.u16XPosition;
-
-            if(u16LogIndex++ == LENGTH_OF_LOG){
-                u16LogIndex = 0;
-            }
+//            u32LogValues[u16LogIndex] = pos_and_gesture_struct.u16XPosition;
+//
+//            if(u16LogIndex++ == LENGTH_OF_LOG){
+//                u16LogIndex = 0;
+//            }
 
 
             /*Send the data out to the DAC.*/
@@ -1301,7 +1312,7 @@ void MasterControlStateMachine(void){
             u16AirwheelData = pos_and_gesture_struct.u16Airwheel;
             u16LastAirWheelData = u16AirwheelData;
             break;
-
+//PLAYBACK
         case PLAYBACK:
             /*If playback is running, read the RAM.*/
             if(u8SampleTimerFlag == TRUE){
@@ -1542,7 +1553,9 @@ void MasterControlStateMachine(void){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleClock();
                             u8RecordTrigger = NO_TRIGGER;
-                            regulateClockPlaybackSpeed();//Keep playback speed running.
+                            if(u16ModulationOnFlag == FALSE){
+                             //   regulateClockPlaybackSpeed();//Keep playback speed running.
+                            }
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
@@ -1550,7 +1563,7 @@ void MasterControlStateMachine(void){
                              */
                             u16NumRecordClocks = getRecClockCount();
                             if(u16NumRecordClocks > u32ExpectedNumTicksBetweenClocks){
-                                setPlaybackRunStatus(PAUSED);
+                              //  setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }
@@ -1822,7 +1835,9 @@ void MasterControlStateMachine(void){
                     if(u8OverdubRunFlag == RUN){
                         if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                             handleClock();
-                            regulateClockPlaybackSpeed();//Keep playback speed running.
+                            if(u16ModulationOnFlag == FALSE){
+                                regulateClockPlaybackSpeed();//Keep playback speed running.
+                            }
                         }
                         else{
                             /* Check to see if the trigger is late. There is margin built into
@@ -1975,7 +1990,9 @@ void MasterControlStateMachine(void){
                 if(u8PlaybackRunFlag == RUN){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                         handleClock();
-                        regulateClockPlaybackSpeed();//Keep playback speed running.
+                        if(u16ModulationOnFlag == FALSE){
+                            regulateClockPlaybackSpeed();//Keep playback speed running.
+                        }
                     }
                     else{
                         /* Check to see if the trigger is late. There is margin built into
@@ -2069,7 +2086,9 @@ void MasterControlStateMachine(void){
                 if(u8PlaybackRunFlag == RUN){
                     if(u8RecordTrigger == TRIGGER_WENT_HIGH){
                         handleClock();
-                        regulateClockPlaybackSpeed();//Keep playback speed running.
+                        if(u16ModulationOnFlag == FALSE){
+                            regulateClockPlaybackSpeed();//Keep playback speed running.
+                        }
                     }
                     else{
                         /* Check to see if the trigger is late. There is margin built into
