@@ -182,14 +182,14 @@ static MasterFlags Flags;
 #define SIZE_OF_ADJUSTMENT_ARRAY 6
 #define SPEED_ADJUSTMENT_STEP_SIZE  64 //NUMBER OF STEPS PER SHIFTING LEVEL
 #define SPEED_ADJUSTMENT_STEP_SHIFT 6
-#define SPEED_ADJUSTMENT_INCREMENT   500
+#define SPEED_ADJUSTMENT_INCREMENT   1000
 #define MINIMUM_SAMPLE_PERIOD   SAMPLE_TIMER_PERIOD>>3 //8x faster
 #define MAXIMUM_SAMPLE_PERIOD   SAMPLE_TIMER_PERIOD<<4 //16x slower
 static uint32_t u32PlaybackSpeed = STANDARD_PLAYBACK_SPEED;//Number of speed increments away from standard speed
 static int16_t i16PlaybackData = 0;
 static uint16_t u16PlaybackSpeedTableIndex = INITIAL_SPEED_INDEX;
 
-#define Z_OUTPUT_DECAY_RATE 100 //How many counts per cycle will the Z decay at.
+#define Z_OUTPUT_DECAY_RATE 400 //How many counts per cycle will the Z decay at.
 
 const uint16_t u16PrescaleValues[8] = {TMR_PRESCALE_VALUE_1,
 TMR_PRESCALE_VALUE_2,
@@ -330,7 +330,10 @@ uint8_t handleClock(void){
         /*This state is for playback or for overdubbing when playback isn't running.*/
 
         if(u8CurrentInputClockCount == 0 && u8ExternalAirWheelActiveFlag == FALSE){
-            syncLoop();
+            if( u8OperatingMode == PLAYBACK ||
+                Flags.u8OverdubActiveFlag == FALSE || u8HandPresentFlag == FALSE){
+                syncLoop();
+            }
         }else if(u8ExternalAirWheelActiveSyncFlag == TRUE){
            
             if(u8ExternalAirwheelClockDelayCount-- == 0){
@@ -360,7 +363,7 @@ uint8_t handleClock(void){
         if(u8NewPlaybackSpeedClockedFlag != TRUE){
 
             //calculateAvgNumClicksBetweenClocks();
-            u32AvgNumTicksBetweenClocks = getLastRecClockCount();
+            setAvgNumClicksBetweenClocks(getLastRecClockCount());
         }else{
             //The speed changed. Need to update.
             u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
@@ -601,10 +604,8 @@ uint32_t calculateTapTempo(void){
 }
 
 void setAvgNumClicksBetweenClocks(uint32_t u32NewNumClicks){
-    int i;
-
     u32AvgNumTicksBetweenClocks = u32NewNumClicks;
-    u32TargetNumTicksBetweenClocks = u32NewNumClicks;
+ //   u32TargetNumTicksBetweenClocks = u32NewNumClicks;
     u32ExpectedNumTicksBetweenClocks = u32NewNumClicks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
 }
 
@@ -631,6 +632,9 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
     else{
         for(i=0;i<u8ClockLengthOfRecordedSequence;i++){
             u32Sum += u32NumTicksBetweenClocksArray[i];
+            if(u32NumTicksBetweenClocksArray[i] > u32LongestTicks){
+                u32LongestTicks = u32NumTicksBetweenClocksArray[i];
+            }
         }
         u32Result = u32Sum / u8ClockLengthOfRecordedSequence;
     }
@@ -672,13 +676,6 @@ void regulateClockPlaybackSpeed(void){
 
         /*Adjust the clock timer accordingly.*/
         calculateClockTimer(u32PlaybackSpeed);
-
-//        i16SecondLogValues[u16LogIndex] = i16Difference;
-//        u32LogValues[u16LogIndex++] = u32PlaybackSpeed;
-//
-//        if(u16LogIndex == LENGTH_OF_LOG){
-//            u16LogIndex = 0;
-//        }
     }else{
         u8SkipClockEdge = FALSE;
     }
@@ -745,10 +742,6 @@ void MasterControlInit(void){
     p_VectrData = &VectrData;
     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
 }
-
-
-
-
 
 /*  Implementing the internally regulated clock + getting the LED blinking during internally sync'ed recording.
  *  Set up a default clock rate of 120BPM
@@ -984,13 +977,6 @@ void MasterControlStateMachine(void){
             linearizePosition(&pos_and_gesture_struct);
             scaleRange(&pos_and_gesture_struct);
             quantizePosition(&pos_and_gesture_struct);
-
-//            u32LogValues[u16LogIndex] = pos_and_gesture_struct.u16XPosition;
-//
-//            if(u16LogIndex++ == LENGTH_OF_LOG){
-//                u16LogIndex = 0;
-//            }
-
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
@@ -1554,7 +1540,7 @@ void MasterControlStateMachine(void){
                             handleClock();
                             u8RecordTrigger = NO_TRIGGER;
                             if(u16ModulationOnFlag == FALSE){
-                             //   regulateClockPlaybackSpeed();//Keep playback speed running.
+                                regulateClockPlaybackSpeed();//Keep playback speed running.
                             }
                         }
                         else{
@@ -1563,7 +1549,7 @@ void MasterControlStateMachine(void){
                              */
                             u16NumRecordClocks = getRecClockCount();
                             if(u16NumRecordClocks > u32ExpectedNumTicksBetweenClocks){
-                              //  setPlaybackRunStatus(PAUSED);
+                               setPlaybackRunStatus(PAUSED);
                             }
                         }
                     }
@@ -1699,9 +1685,11 @@ void MasterControlStateMachine(void){
                     else{
                         p_overdub_pos_and_gesture_struct->u16ZPosition =  p_mem_pos_and_gesture_struct->u16ZPosition;
                     }
-                    
-                    /*Is this a problem? Because we have a read above.*/
+                   
                     if(u8BufferDataCount == 0){
+                        if(u8MemCommand == READ_RAM){
+                            synchronizeReadWriteRAMAddress(getRAMReadAddress());
+                        }
                         u8MemCommand = WRITETHENREAD_RAM;
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for OVERDUB
                         xQueueSend(xRAMWriteQueue, &overdubBuffer, 0);
@@ -1722,18 +1710,47 @@ void MasterControlStateMachine(void){
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for READ
                     }
 
-                    handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
-                    slewPosition(p_mem_pos_and_gesture_struct);
-                    if(Flags.u8OverdubActiveFlag == TRUE){
-                        xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+                    if(u8HoldState == OFF){
+
+                        //Playback is running. Run the clock
+                        setClockEnableFlag(TRUE);
+                        handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
+                        slewPosition(p_mem_pos_and_gesture_struct);
+                        //Handle the gate output
+                        gateHandler(p_mem_pos_and_gesture_struct);
+                   }
+                   else{
+                    /*If hold is active, execute the hold behavior*/
+                        if(u8HandHoldFlag == TRUE){
+                            handleZDecay(p_mem_pos_and_gesture_struct);
+                        }
+                        holdHandler(&pos_and_gesture_struct, p_mem_pos_and_gesture_struct, &hold_position_struct);
+                        //Handle the gate output
+                        gateHandler(p_mem_pos_and_gesture_struct);
+                   }
+
+                   /*Check encoder activations. Could go to live play or implement a hold*/
+                    if(u8HoldActivationFlag == HOLD_ACTIVATE){
+                        u8HoldState = ON;
+                        setHoldPosition(p_mem_pos_and_gesture_struct);
                     }
-                    gateHandler(p_mem_pos_and_gesture_struct);
+                    else if(u8HoldActivationFlag == HOLD_DEACTIVATE){
+                        u8HoldState = OFF;
+                    }
+
+                    if(u16ModulationOnFlag == TRUE){
+                        runModulation(p_mem_pos_and_gesture_struct);
+                    }
+
+                    xQueueSend(xLEDQueue, p_mem_pos_and_gesture_struct, 0);
+                    mutePosition(p_mem_pos_and_gesture_struct);
                     scaleRange(p_mem_pos_and_gesture_struct);
                     /*Quantize the position.*/
                     quantizePosition(p_mem_pos_and_gesture_struct);
                     xQueueSend(xSPIDACQueue, p_mem_pos_and_gesture_struct, 0);
+
                     
-                }
+                    }
             }
 
             //Clear the flag
@@ -3251,8 +3268,9 @@ void finishRecording(void){
     if(p_VectrData->u8Source[RECORD] == EXTERNAL && p_VectrData->u8Control[RECORD] != GATE
        || u8TapTempoSetFlag == TRUE){
         u8ClockLengthOfRecordedSequence = u8CurrentInputClockCount;
-        u32TargetNumTicksBetweenClocks = calculateAvgNumClicksBetweenClocks();//Needed to change playback speed.
-        u8CurrentInputClockCount = 0;
+        setAvgNumClicksBetweenClocks(calculateAvgNumClicksBetweenClocks());
+        u32TargetNumTicksBetweenClocks = u32AvgNumTicksBetweenClocks;
+        u8CurrentInputClockCount = 1;
     }else{
         //Free running switch recording. We have to calculate the clock data.
         u8ClockLengthOfRecordedSequence = 1<<p_VectrData->u8NumClocks;

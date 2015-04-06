@@ -217,6 +217,7 @@ uint32_t getEndOfSequenceAddress(void);
 uint8_t fileTableIsNotCurrent(void);
 void updateFileTable(void);
 void setClockSyncFlag(void);
+void synchronizeReadWriteRAMAddress(uint32_t u32NewAddress);
 
 #endif	/* MEM_H */
 

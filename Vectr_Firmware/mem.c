@@ -1698,6 +1698,11 @@ uint32_t getRAMReadAddress(void){
     return u32RAMReadAddress;
 }
 
+void synchronizeReadWriteRAMAddress(uint32_t u32NewAddress){
+    u32RAMReadAddress = u32NewAddress;
+    u32RAMWriteAddress = u32NewAddress;
+}
+
 void setRAMWriteAddress(uint32_t u32Address){
     u32RAMWriteAddress = u32Address;
 }

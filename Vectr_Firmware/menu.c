@@ -479,7 +479,12 @@ void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value){
     //LED1 and 2
     if(u16Value < u16SecondLEDValue){
         u16LEDBrightness = u16SecondLEDValue - u16Value;
-        u16LEDBrightness *= u16LEDScaling;
+        if(u8Parameter == LINEARITY){
+            u16LEDBrightness *= u16LEDScaling;
+        }
+        else{
+            u16LEDBrightness >>= u16LEDScaling;
+        }
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex], u16LEDBrightness);
         u8LEDIndex++;
         u16LEDBrightness = MAX_BRIGHTNESS - u16LEDBrightness;
@@ -492,7 +497,12 @@ void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value){
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex], 0);
         u8LEDIndex++;
         u16LEDBrightness = u16ThirdLEDValue - u16Value;
-        u16LEDBrightness *= u16LEDScaling;
+        if(u8Parameter == LINEARITY){
+            u16LEDBrightness *= u16LEDScaling;
+        }
+        else{
+            u16LEDBrightness >>= u16LEDScaling;
+        }
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex], u16LEDBrightness);
         u8LEDIndex++;
         u16LEDBrightness = MAX_BRIGHTNESS - u16LEDBrightness;
@@ -504,7 +514,12 @@ void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value){
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex++], 0);
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex++], 0);
         u16LEDBrightness = u16FourthLEDValue - u16Value;
-        u16LEDBrightness *= u16LEDScaling;
+        if(u8Parameter == LINEARITY){
+            u16LEDBrightness *= u16LEDScaling;
+        }
+        else{
+            u16LEDBrightness >>= u16LEDScaling;
+        }
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex], u16LEDBrightness);
         u8LEDIndex++;
         u16LEDBrightness = MAX_BRIGHTNESS - u16LEDBrightness;
@@ -516,7 +531,12 @@ void indicateLEDContinuousXYZParameter(uint8_t u8Parameter, uint16_t u16Value){
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex++], 0);
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex++], 0);
         u16LEDBrightness = u16MaxValue - u16Value;
-        u16LEDBrightness *= u16LEDScaling;
+        if(u8Parameter == LINEARITY){
+            u16LEDBrightness *= u16LEDScaling;
+        }
+        else{
+            u16LEDBrightness >>= u16LEDScaling;
+        }
         setBlueLEDBrightness(u8StandardSubMenuMapping[u8LEDIndex], u16LEDBrightness);
         u8LEDIndex++;
         u16LEDBrightness = MAX_BRIGHTNESS - u16LEDBrightness;
