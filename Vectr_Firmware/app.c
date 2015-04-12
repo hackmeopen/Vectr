@@ -450,7 +450,6 @@ void setClockEnableFlag(uint8_t u8NewState){
 
 void resetRecClockCount(void){
     u32RecClockCount = 0;
-  //  u32ClockTimer = u32ClockTimerTriggerCount;
 }
 
 uint32_t getRecClockCount(void){
@@ -821,7 +820,7 @@ void vTaskIOHandler(void* pvParameters){
             //Which port changed?
             if(portChangeData.u16Port == PORT_CHANNEL_E){
 
-                
+
 
             }
             else if(portChangeData.u16Port == PORT_CHANNEL_F){
@@ -854,8 +853,8 @@ void vTaskIOHandler(void* pvParameters){
                 u16PortDLastState = u16PortDState;
             }
         }
-        
-        
+
+
     }
 }
 

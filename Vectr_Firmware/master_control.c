@@ -50,7 +50,6 @@
 //TODO: Test - Handle record clock during air scratching.
 //TODO: Test - Check clocks with effects.
 
-
 //TODO: Negative range doesnt go all the way to -5V
 //TODO: Figure out what it takes to update the MGC3130 library
 //TODO: Specify a solution for microchip demos
@@ -144,7 +143,8 @@ static uint8_t u8ExternalAirwheelClockDelayCount;
 static uint8_t u8ExternalAirwheelClockDelay;
 
 #define EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT 32
-
+#define MINIMUM_CLOCK_TICKS 48
+#define MAXIMUM_CLOCK_TICKS 16000
 
 static uint8_t u8MultiTapTriggerTimer;
 #define MULTI_TAP_TIMER_RESET   50
@@ -158,7 +158,7 @@ enum{
 
 #define LENGTH_OF_INPUT_CLOCK_ARRAY     4
 #define LOG_LENGTH_INPUT_CLOCK_ARRAY    2
-#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  64
+#define MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE  128
 
 static uint8_t u8CurrentInputClockCount;
 static uint8_t u8ClockLengthOfRecordedSequence;
@@ -260,10 +260,10 @@ void resetInputClockHandling(void){
     }
 }
 
-#define LENGTH_OF_LOG  200
+#define LENGTH_OF_LOG  32
 uint16_t  u16LogIndex = 0;
 uint32_t u32LogValues[LENGTH_OF_LOG];
-int16_t i16SecondLogValues[LENGTH_OF_LOG];
+uint32_t u32SecondLogValues[LENGTH_OF_LOG];
 
 /*This function handles the record clock input.
  * It counts clock pulses.
@@ -282,6 +282,8 @@ int16_t i16SecondLogValues[LENGTH_OF_LOG];
 */
 uint8_t handleClock(void){
     uint8_t u8modulus;
+    int i;
+    uint32_t u32LastRecClockCount = getLastRecClockCount();
 
     /* Keep track of the length of time between clocks. To get the info, we request
      * it from the timer routine and then reset the timer clock to start counting
@@ -293,21 +295,23 @@ uint8_t handleClock(void){
      * 2. We also want to start and stop the playback based on whether or not the
      */
     if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
-        u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = getLastRecClockCount();
-       // resetRecClockCount();
-        u8CurrentClockArrayIndex++;
-        if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
-            u8CurrentClockArrayIndex = 0;
-        }
-        
-        u32LogValues[u16LogIndex]= u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex];
+        if(u32LastRecClockCount > MINIMUM_CLOCK_TICKS && u32LastRecClockCount < MAXIMUM_CLOCK_TICKS){
+            u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = u32LastRecClockCount;
+            
+            u32LogValues[u16LogIndex]= u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex];
 
-        if(u16LogIndex++ > LENGTH_OF_LOG){
-            u16LogIndex = 0;
+            if(u16LogIndex++ > LENGTH_OF_LOG){
+                u16LogIndex = 0;
+            }
+
+            u8CurrentClockArrayIndex++;
+            if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
+                u8CurrentClockArrayIndex = 0;
+            }       
         }
 
         //With external recording, the clock output mirrors the clock input
-        if(u8ExternalAirWheelActiveFlag == FALSE){
+        if(u8ExternalAirWheelActiveFlag == FALSE || u8OperatingMode == LIVE_PLAY){
             SET_LOOP_SYNC_OUT;
             setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
         }
@@ -362,13 +366,19 @@ uint8_t handleClock(void){
          */
         if(u8NewPlaybackSpeedClockedFlag != TRUE){
 
-            //calculateAvgNumClicksBetweenClocks();
-            setAvgNumClicksBetweenClocks(getLastRecClockCount());
+            if(u32LastRecClockCount > MINIMUM_CLOCK_TICKS){
+                calculateAvgNumClicksBetweenClocks();
+               // setAvgNumClicksBetweenClocks(u32LastRecClockCount);
+            }
         }else{
             //The speed changed. Need to update.
             u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
             u8NewPlaybackSpeedClockedFlag = FALSE;
+            for(i=0;i<LENGTH_OF_INPUT_CLOCK_ARRAY;i++){
+                u32NumTicksBetweenClocksArray[i] = u32NewClockClicks;
+            }
             setAvgNumClicksBetweenClocks(u32NewClockClicks);
+            u32TargetNumTicksBetweenClocks = u32NewClockClicks;
             SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
             RESET_SAMPLE_TIMER;
             calculateClockTimer(u32PlaybackSpeed);
@@ -496,7 +506,7 @@ void syncLoop(void){
     //If clock is being multiplied, keep it synced
     if(u8ExternalAirWheelActiveFlag == TRUE){
         resetClockTimer();
-        resetRecClockCount();
+    //    resetRecClockCount();
     }
 }
 
@@ -522,7 +532,6 @@ void runTapTempo(void){
         if(u8TapTempoSetFlag == FALSE){
             
             if(u8InitTapTempoFlag == TRUE){
-                setClockEnableFlag(TRUE);
                 resetRecClockCount();
                 resetClockTimer();
                 u8InitTapTempoFlag = FALSE;
@@ -639,8 +648,10 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
         u32Result = u32Sum / u8ClockLengthOfRecordedSequence;
     }
 
-    u32AvgNumTicksBetweenClocks = u32Result;
-    u32ExpectedNumTicksBetweenClocks = u32LongestTicks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
+    if(u32Result != 0){
+        u32AvgNumTicksBetweenClocks = u32Result;
+        u32ExpectedNumTicksBetweenClocks = u32LongestTicks + MARGIN_BETWEEN_EXPECTED_CLOCKS_AND_AVERAGE;
+    }
 
     return u32AvgNumTicksBetweenClocks;
 }
@@ -654,8 +665,7 @@ static uint8_t u8SkipClockEdge = FALSE;
  * the number of ticks between clock edges constant.
  */
 void regulateClockPlaybackSpeed(void){
-    int16_t i16Temp;
-    uint8_t u8Change = 0;
+   
     int16_t i16Difference = u32AvgNumTicksBetweenClocks - u32TargetNumTicksBetweenClocks;
     uint32_t u32NewPlaybackSpeed;
     int32_t i32PlaybackSpeedChange;
@@ -669,13 +679,25 @@ void regulateClockPlaybackSpeed(void){
     if(u8SkipClockEdge == FALSE){
         i32PlaybackSpeedChange = u32PlaybackSpeed * i16Difference;
         i32PlaybackSpeedChange /= (int32_t) u32TargetNumTicksBetweenClocks;
+        i32PlaybackSpeedChange >>= 1;
         u32NewPlaybackSpeed = u32PlaybackSpeed + i32PlaybackSpeedChange;
-        u32PlaybackSpeed = u32NewPlaybackSpeed;
-        SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-        RESET_SAMPLE_TIMER;
 
-        /*Adjust the clock timer accordingly.*/
-        calculateClockTimer(u32PlaybackSpeed);
+      //  u32LogValues[u16LogIndex]= u32PlaybackSpeed;
+
+        u32SecondLogValues[u16LogIndex] = u32NewPlaybackSpeed;
+
+//        if(u16LogIndex++ > LENGTH_OF_LOG){
+//                u16LogIndex = 0;
+//            }
+
+        if(u32NewPlaybackSpeed > FASTEST_SPEED && u32NewPlaybackSpeed <  SLOWEST_SPEED){
+            u32PlaybackSpeed = u32NewPlaybackSpeed;
+            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+            RESET_SAMPLE_TIMER;
+
+            /*Adjust the clock timer accordingly.*/
+            calculateClockTimer(u32PlaybackSpeed);
+        }
     }else{
         u8SkipClockEdge = FALSE;
     }
@@ -1384,7 +1406,7 @@ void MasterControlStateMachine(void){
                                     u16LastAirWheelData = u16AirwheelData;
                                     if(u32NewPlaybackSpeedClocked > FASTEST_SPEED){
                                         turnOffAllLEDs();
-                                        u16LastAirWheelData = u16AirwheelData;
+                                       
                                         u8NewPlaybackSpeedClockedFlag = TRUE;
                                         u8ExternalAirWheelActiveFlag = TRUE;
                                         u32NewClockClicks = u32TargetNumTicksBetweenClocks<<1;
@@ -4306,7 +4328,7 @@ void setPlaybackRunStatus(uint8_t u8NewState){
     if(u8PlaybackRunFlag == RUN){
         START_CLOCK_TIMER;
     }
-    else{
+    else{// if(u8PlaybackRunFlag != PAUSED){
         STOP_CLOCK_TIMER;
     }
 
