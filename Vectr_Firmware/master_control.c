@@ -141,6 +141,7 @@ static uint8_t u8ExternalAirWheelActiveFlag;
 static uint8_t u8ExternalAirWheelActiveSyncFlag;
 static uint8_t u8ExternalAirwheelClockDelayCount;
 static uint8_t u8ExternalAirwheelClockDelay;
+static uint8_t u8ExternalAirwheelExtraClocks;
 
 #define EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT 32
 #define MINIMUM_CLOCK_TICKS 48
@@ -776,13 +777,10 @@ void MasterControlInit(void){
 void MasterControlStateMachine(void){
 
     static pos_and_gesture_data last_position_data;
-
-
     uint16_t u16NumRecordClocks;
     uint8_t u8MessageReceivedFlag = FALSE;
     uint16_t u16TouchData;
     uint16_t u16AirwheelData;
-    
     static uint8_t u8GestureDebounceTimer;
     static uint16_t u16LastAirWheelData;
     int16_t i16AirWheelChange;
@@ -1400,22 +1398,31 @@ void MasterControlStateMachine(void){
                             }
                             else{
                                 //Externally clocked. Work in binary increments.
+                                //If the speed increases then we need to add extra steps
+                                //between incoming clock edges.
+                                //When the clock is slowed down, we have to count extra clocks, this
+                                //is the clock delay.
+                                //When the clock is sped up, we have to add extra clocks
                                 if(i16AirWheelChange >= EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT){
                                     //Multiply the current speed by 2.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed>>1;//Lower number makes the clock faster
                                     u16LastAirWheelData = u16AirwheelData;
+                                    
                                     if(u32NewPlaybackSpeedClocked > FASTEST_SPEED){
                                         turnOffAllLEDs();
-                                       
                                         u8NewPlaybackSpeedClockedFlag = TRUE;
                                         u8ExternalAirWheelActiveFlag = TRUE;
                                         u32NewClockClicks = u32TargetNumTicksBetweenClocks<<1;
                                         if(u8ExternalAirwheelClockDelay > 0){
                                             u8ExternalAirwheelClockDelay>>=1;
+                                        }else{
+                                            u8ExternalAirwheelExtraClocks <<= 1;
                                         }
                                     }
                                 }else if(i16AirWheelChange <= -EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT){
                                     //Divide the current speed by 2.
+                                    //If the speed decreases, then there are in between clock edges
+                                    //which are not acted upon, but are counted.
                                     u32NewPlaybackSpeedClocked = u32PlaybackSpeed<<1;
                                     u16LastAirWheelData = u16AirwheelData;
                                     if(u32NewPlaybackSpeedClocked < SLOWEST_SPEED){
@@ -1423,10 +1430,10 @@ void MasterControlStateMachine(void){
                                         u8NewPlaybackSpeedClockedFlag = TRUE;
                                         u8ExternalAirWheelActiveFlag = TRUE;
                                         u32NewClockClicks = u32TargetNumTicksBetweenClocks>>1;
-                                        if(u8ExternalAirwheelClockDelay != 0){
-                                            u8ExternalAirwheelClockDelay<<=1;
+                                        if(u8ExternalAirwheelExtraClocks > 0){
+                                            u8ExternalAirwheelExtraClocks>>=1;
                                         }else{
-                                            u8ExternalAirwheelClockDelay=1;
+                                            u8ExternalAirwheelClockDelay <<= 1;
                                         }
                                     }
                                 }
@@ -2477,13 +2484,13 @@ uint32_t calculateNextClockPulse(void){
  at a multiple faster than the regular timer and count up to a number to trigger
  the correct to get more accurate timing.*/
 void calculateClockTimer(uint32_t u32Speed){
-
+    
     uint32_t u32LengthOfSequence = getActiveSequenceLength()/6;
-
     uint8_t u8ClockMode = p_VectrData->u8NumClocks;//Clock pulses per cycle
     uint32_t u32ClockSpeed = u32Speed;//How fast does the clock have to run?
     uint16_t u16Multiple = 3;//Run at least 8x faster than the sample clock
     uint32_t u32ClockTimerTriggerCount;
+    uint32_t u32ExternalAirwheelClockCount;
     
     /*The clock needs to run at a multiple of the frequency of the
      regular sample clock, but not any faster than necessary. The longest the
@@ -2509,6 +2516,16 @@ void calculateClockTimer(uint32_t u32Speed){
     u32ClockTimerTriggerCount >>= u8ClockMode;
 
     setClockTimerTriggerCount(u32ClockTimerTriggerCount);
+    
+    if(u8ExternalAirWheelActiveFlag == TRUE){
+        
+        if(u8ExternalAirwheelClockDelay > 0){
+            //Slowed down. Must count extra clocks.
+            u32ExternalAirwheelClockCount = u32ClockTimerTriggerCount << u8ExternalAirwheelClockDelay;
+        }else{
+            u32ExternalAirwheelClockCount = u32ClockTimerTriggerCount >> u8ExternalAirwheelClockDelay;
+        }
+    }
 
     SET_CLOCK_TIMER_PERIOD(u32ClockSpeed);
     RESET_CLOCK_TIMER;

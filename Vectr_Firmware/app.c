@@ -488,6 +488,10 @@ void vTIM3InterruptHandler(void){
                     setClockTriggerFlag();//Let master control know a clock edge occurred.
 
                 }else if(u8ExternalAirWheelActiveFlag == TRUE){
+                    //If the clock is sped up, then we need to add clocks. The count for adding clocks
+                    //is some even fraction of the clock trigger count.
+                    //If the clock is slowed down, then we need to count extra clocks
+                    
                     handleSwitchLEDClockBlink();
                     SET_LOOP_SYNC_OUT;
                     u8ClockPulseFlag = TRUE;
@@ -503,9 +507,7 @@ void vTIM3InterruptHandler(void){
 
 void
 vTIM5InterruptHandler(void){
-
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-
     CLEAR_SAMPLE_TIMER_INT;
     SET_DAC_LDAC;
 
@@ -531,41 +533,34 @@ vTIM5InterruptHandler(void){
  * It moves along the I2C process.
  */
 void
-vI2C1InterruptHandler(void)
-{
+vI2C1InterruptHandler(void){
 	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 	uint8_t		u8data;
 	uint32_t	u32statusRegister;
 
-
-        //See if the I2C Master interrupt was the source.
-        if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_I2C_1_MASTER)){
-            PLIB_INT_SourceFlagClear(INT_ID_0, INT_SOURCE_I2C_1_MASTER);
-
-            xSemaphoreGiveFromISR(xSemaphoreI2CHandler,&xHigherPriorityTaskWoken);
-
+    //See if the I2C Master interrupt was the source.
+    if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_I2C_1_MASTER)){
+        PLIB_INT_SourceFlagClear(INT_ID_0, INT_SOURCE_I2C_1_MASTER);
+        xSemaphoreGiveFromISR(xSemaphoreI2CHandler,&xHigherPriorityTaskWoken);
+    }
+    else if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_I2C_1_BUS)){
+        /*Check for errors. If an error occurred, start the state over again.*/
+        if(PLIB_I2C_ArbitrationLossHasOccurred(I2C_MGC3130)){
+            PLIB_I2C_ArbitrationLossClear(I2C_MGC3130);
         }
-        else if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_I2C_1_BUS)){
-            /*Check for errors. If an error occurred, start the state over again.*/
-            if(PLIB_I2C_ArbitrationLossHasOccurred(I2C_MGC3130)){
-                PLIB_I2C_ArbitrationLossClear(I2C_MGC3130);
-            }
-        }
+    }
 
-        //Switch to higher priority task if necessary. This line must be last.
-        portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
+    //Switch to higher priority task if necessary. This line must be last.
+    portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
 }
 
 /*This interrupt handler handles the data ready line from the MGC3130*/
 void vEXTI0InterruptHandler(void){
 
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-
     xSemaphoreGiveFromISR(xSemaphoreMGC3130DataReady,&xHigherPriorityTaskWoken);
-
     //Clear the interrupt
     CLEAR_MGC3130_DATA_READY_INT;
-
     //Switch to higher priority task if necessary. This line must be last.
     portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
 }
@@ -573,11 +568,8 @@ void vEXTI0InterruptHandler(void){
 /*This interrupt handler handles the pressing of the encoder switch*/
 void vEXTI3InterruptHandler(void){
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-
     xSemaphoreGiveFromISR(xSemaphoreEncSwitchPressed,&xHigherPriorityTaskWoken);
-
     CLEAR_ROTARY_ENC_SWITCH_INT;
-
     DISABLE_ROTARY_ENC_SWITCH_INT;
     //Switch to higher priority task if necessary. This line must be last.
     portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
@@ -588,12 +580,8 @@ void vEXTI4InterruptHandler(void){
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
     xSemaphoreGiveFromISR(xSemaphoreSwitchPressed,&xHigherPriorityTaskWoken);
-
     CLEAR_SWITCH_INTERRUPT;
-
     DISABLE_SWITCH_INTERRUPT;
-
-    
     //Switch to higher priority task if necessary. This line must be last.
     portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
 }
@@ -685,8 +673,6 @@ void vDMA3InterruptHandler(void){
     portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
 }
 
-portChangeStruct portChangeData;
-uint8_t u8Flag;
 uint16_t u16PortDState,
         u16PortDLastState;
 uint8_t u8PortEState,
@@ -703,12 +689,7 @@ io_event_message event_message;
 void vPinChangeInterruptHandler(void){
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
-    portChangeStruct portChangeData;
-
     if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_CHANGE_NOTICE_E)){
-//        portChangeData.u16Port = PORT_CHANNEL_E;
-//        portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_E);
-//        xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
         u8PortEState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_E);
 
         //Figure out which pin caused the change and handle it
@@ -740,14 +721,10 @@ void vPinChangeInterruptHandler(void){
         }
 
         u8PortELastState = u8PortEState;
-
         CLEAR_PORT_E_CHANGE_INTERRUPT;
-
     }
+    
     if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_CHANGE_NOTICE_F)){
-//        portChangeData.u16Port = PORT_CHANNEL_F;
-//        portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_F);
-//        xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
         u8PortFState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_F);
 
         u8PlayInState = (u8PortFState & (1<<PLAY_IN_PIN))>>PLAY_IN_PIN;
@@ -760,10 +737,6 @@ void vPinChangeInterruptHandler(void){
     }
 
     if(PLIB_INT_SourceFlagGet(INT_ID_0, INT_SOURCE_CHANGE_NOTICE_D)){
-//        portChangeData.u16Port = PORT_CHANNEL_D;
-//        portChangeData.u16PortState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_D);
-//        CLEAR_PORT_D_CHANGE_INTERRUPT;
-//        xQueueSendFromISR(xIOPinChangeQueue, &portChangeData, &xHigherPriorityTaskWoken);
         u16PortDState = PLIB_PORTS_Read(PORTS_ID_0, PORT_CHANNEL_D);
 
         if((u16PortDLastState & (1<<HOLD_PIN)) != (u16PortDState & (1<<HOLD_PIN))){
