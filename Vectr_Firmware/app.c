@@ -431,6 +431,8 @@ static uint8_t u8GatePulseFlag;
 static uint8_t u8ClockEnableFlag = TRUE;
 static uint32_t u32RecClockCount;
 static uint32_t u32LastRecClockCount;
+static uint32_t u32AirwheelClockTimerTriggerCount;
+static uint32_t u32AirwheelClockTimer;
 
 void setClockPulseFlag(void){
     u8ClockPulseFlag = TRUE;
@@ -438,6 +440,10 @@ void setClockPulseFlag(void){
 
 void setClockTimerTriggerCount(uint32_t u32NewTriggerCount){
     u32ClockTimerTriggerCount = u32NewTriggerCount;
+}
+
+void setAirwheelClockTimerTriggerCount(uint32_t u32NewTriggerCount){
+    u32AirwheelClockTimerTriggerCount = u32NewTriggerCount;
 }
 
 void resetClockTimer(void){
@@ -460,7 +466,8 @@ uint32_t getLastRecClockCount(void){
     return u32LastRecClockCount;
 }
 
-void vTIM3InterruptHandler(void){
+void vTIM3InterruptHandler(void)
+{
     uint8_t u8TapTempoSetFlag;
     uint8_t u8ExternalAirWheelActiveFlag;
 
@@ -473,7 +480,6 @@ void vTIM3InterruptHandler(void){
          /*If the count has reached the trigger count, it's time for a pulse.*/
         //Or if we're in live play mode and tap tempo has been activated.
         if(getPlaybackRunStatus() == RUN || u8TapTempoSetFlag == TRUE){
-            if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
 
                 u8ExternalAirWheelActiveFlag = getu8ExternalAirWheelActiveFlag();
 
@@ -483,26 +489,38 @@ void vTIM3InterruptHandler(void){
                 if((getCurrentSource(RECORD) != EXTERNAL ||
                     getCurrentControl(RECORD) == GATE)
                     || u8TapTempoSetFlag == TRUE){
-                    SET_LOOP_SYNC_OUT;
-                    u8ClockPulseFlag = TRUE;
-                    setClockTriggerFlag();//Let master control know a clock edge occurred.
-
+                    
+                    if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
+                        SET_LOOP_SYNC_OUT;
+                        u8ClockPulseFlag = TRUE;
+                        setClockTriggerFlag();//Let master control know a clock edge occurred.
+                        u32ClockTimer = 0;
+                    }
                 }else if(u8ExternalAirWheelActiveFlag == TRUE){
                     //If the clock is sped up, then we need to add clocks. The count for adding clocks
                     //is some even fraction of the clock trigger count.
                     //If the clock is slowed down, then we need to count extra clocks
-                    
-                    handleSwitchLEDClockBlink();
-                    SET_LOOP_SYNC_OUT;
-                    u8ClockPulseFlag = TRUE;
-                    
+                    if(u32ClockTimer++ < u32ClockTimerTriggerCount){
+                        if(u32AirwheelClockTimer++ >= u32AirwheelClockTimerTriggerCount){
+                            handleSwitchLEDClockBlink();
+                            SET_LOOP_SYNC_OUT;
+                            u8ClockPulseFlag = TRUE;
+                            setClockTriggerFlag();//Let master control know a clock edge occurred.
+                            u32AirwheelClockTimer = 0;
+                        }
+                    }else{
+                        if(u32ClockTimerTriggerCount <= u32AirwheelClockTimerTriggerCount){
+                            SET_LOOP_SYNC_OUT;
+                            u8ClockPulseFlag = TRUE;
+                            setClockTriggerFlag();//Let master control know a clock edge occurred.
+                            u32AirwheelClockTimer = 0;
+                        }
+                        u32ClockTimer = 0;
+                    }
                 }
-                u32ClockTimer = 0;
-            }
+            u32RecClockCount++;
         }
-
-        u32RecClockCount++;
-    }
+    } 
 }
 
 void

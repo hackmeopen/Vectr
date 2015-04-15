@@ -2523,8 +2523,10 @@ void calculateClockTimer(uint32_t u32Speed){
             //Slowed down. Must count extra clocks.
             u32ExternalAirwheelClockCount = u32ClockTimerTriggerCount << u8ExternalAirwheelClockDelay;
         }else{
-            u32ExternalAirwheelClockCount = u32ClockTimerTriggerCount >> u8ExternalAirwheelClockDelay;
+            u32ExternalAirwheelClockCount = u32ClockTimerTriggerCount >> u8ExternalAirwheelExtraClocks;
         }
+        
+        
     }
 
     SET_CLOCK_TIMER_PERIOD(u32ClockSpeed);
