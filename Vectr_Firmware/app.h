@@ -61,16 +61,11 @@ void APP_Initialize ( void );
 void APP_Tasks ( void );
 void SYS_Initialize ( void* data );
 void SYS_Tasks ( void );
-void setClockTimerTriggerCount(uint32_t u32NewTriggerCount);
-void resetClockTimer(void);
-void setClockEnableFlag(uint8_t u8NewState);
-void setClockPulseFlag(void);
-uint32_t getRecClockCount(void);
-uint32_t getLastRecClockCount(void);
-uint32_t getClockTimerTriggerCount(void);
 
 #define FALSE   0
 #define TRUE    1
+
+
 
 typedef struct{
 	uint16_t u16XPosition;

@@ -420,112 +420,13 @@ void vTaskSwitch(void *pvParameters){
     }
 }
 
-
-/*This time and the stuff below counts to generate clock outputs
- and also counts the time between incoming record and playback
- clock inputs.*/
-static uint32_t u32ClockTimer;
-static uint32_t u32ClockTimerTriggerCount;
 static uint8_t u8ClockPulseFlag;
 static uint8_t u8GatePulseFlag;
-static uint8_t u8ClockEnableFlag = TRUE;
-static uint32_t u32RecClockCount;
-static uint32_t u32LastRecClockCount;
-static uint32_t u32AirwheelClockTimerTriggerCount;
-static uint32_t u32AirwheelClockTimer;
 
 void setClockPulseFlag(void){
     u8ClockPulseFlag = TRUE;
 }
 
-void setClockTimerTriggerCount(uint32_t u32NewTriggerCount){
-    u32ClockTimerTriggerCount = u32NewTriggerCount;
-}
-
-uint32_t getClockTimerTriggerCount(void){
-    return u32ClockTimerTriggerCount;
-}
-
-void setAirwheelClockTimerTriggerCount(uint32_t u32NewTriggerCount){
-    u32AirwheelClockTimerTriggerCount = u32NewTriggerCount;
-}
-
-void resetClockTimer(void){
-    u32ClockTimer = 0;
-}
-
-void setClockEnableFlag(uint8_t u8NewState){
-    u8ClockEnableFlag = u8NewState;
-}
-
-void resetRecClockCount(void){
-    u32RecClockCount = 0;
-}
-
-uint32_t getRecClockCount(void){
-    return u32RecClockCount;
-}
-
-uint32_t getLastRecClockCount(void){
-    return u32LastRecClockCount;
-}
-
-void vTIM3InterruptHandler(void)
-{
-    uint8_t u8TapTempoSetFlag;
-    uint8_t u8ExternalAirWheelActiveFlag;
-
-    CLEAR_CLOCK_TIMER_INT;
-
-    if(u8ClockEnableFlag == TRUE){
-
-        u8TapTempoSetFlag = getTapTempoSetFlag();
-
-         /*If the count has reached the trigger count, it's time for a pulse.*/
-        //Or if we're in live play mode and tap tempo has been activated.
-        if(getPlaybackRunStatus() == RUN || u8TapTempoSetFlag == TRUE){
-
-                u8ExternalAirWheelActiveFlag = getu8ExternalAirWheelActiveFlag();
-
-                /*If record is sync'ed to external then clock pulses are
-                 * duplicated from the record input.
-                 */
-                if((getCurrentSource(RECORD) != EXTERNAL ||
-                    getCurrentControl(RECORD) == GATE)
-                    || u8TapTempoSetFlag == TRUE){
-                    
-                    if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
-                        SET_LOOP_SYNC_OUT;
-                        u8ClockPulseFlag = TRUE;
-                        setClockTriggerFlag();//Let master control know a clock edge occurred.
-                        u32ClockTimer = 0;
-                    }
-                }else if(u8ExternalAirWheelActiveFlag == TRUE){
-                    //If the clock is sped up, then we need to add clocks. The count for adding clocks
-                    //is some even fraction of the clock trigger count.
-                    //If the clock is slowed down, then we need to count extra clocks
-                    if(u32ClockTimer++ < u32ClockTimerTriggerCount){
-                        if(u32AirwheelClockTimer++ >= u32AirwheelClockTimerTriggerCount){
-                            handleSwitchLEDClockBlink();
-                            SET_LOOP_SYNC_OUT;
-                            u8ClockPulseFlag = TRUE;
-                            setClockTriggerFlag();//Let master control know a clock edge occurred.
-                            u32AirwheelClockTimer = 0;
-                        }
-                    }else{
-                        if(u32ClockTimerTriggerCount <= u32AirwheelClockTimerTriggerCount){
-                            SET_LOOP_SYNC_OUT;
-                            u8ClockPulseFlag = TRUE;
-                            setClockTriggerFlag();//Let master control know a clock edge occurred.
-                            u32AirwheelClockTimer = 0;
-                        }
-                        u32ClockTimer = 0;
-                    }
-                }
-        }
-        u32RecClockCount++;
-    } 
-}
 
 void
 vTIM5InterruptHandler(void){
@@ -727,8 +628,8 @@ void vPinChangeInterruptHandler(void){
             event_message.u16message = u8RecordInState;
             xQueueSendFromISR(xIOEventQueue, &event_message, 0);
             if((u8PortEState & 1<<RECORD_IN_PIN) == 0){
-                u32LastRecClockCount = u32RecClockCount;
-                u32RecClockCount = 0;
+                setLastRecClockCount(getRecClockCount());
+                resetRecClockCount();
             }
         }
 

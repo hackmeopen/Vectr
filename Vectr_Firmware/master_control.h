@@ -335,6 +335,19 @@ uint8_t getTimeQuantizationStatus(uint8_t u8Index);
 uint8_t getOverdubActiveFlag(void);
 uint8_t getu8ExternalAirWheelActiveFlag(void);
 void handleSwitchLEDClockBlink(void);
+uint32_t getExternalAirwheelExtraClocks(void);
+void setClockTimerTriggerCount(uint32_t u32NewTriggerCount);
+void resetClockTimer(void);
+void setClockEnableFlag(uint8_t u8NewState);
+void setClockPulseFlag(void);
+uint32_t getRecClockCount(void);
+uint32_t getLastRecClockCount(void);
+uint32_t getClockTimerTriggerCount(void);
+void setAirwheelStatusFlag(uint8_t u8NewState);
+uint8_t getAirwheelStatusFlag(void);
+void setLastRecClockCount(uint32_t u32NewValue);
+
+
 
 
 #endif	/* MASTER_CONTROL_H */
