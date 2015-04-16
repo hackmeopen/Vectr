@@ -67,6 +67,7 @@ void setClockEnableFlag(uint8_t u8NewState);
 void setClockPulseFlag(void);
 uint32_t getRecClockCount(void);
 uint32_t getLastRecClockCount(void);
+uint32_t getClockTimerTriggerCount(void);
 
 #define FALSE   0
 #define TRUE    1

@@ -442,6 +442,10 @@ void setClockTimerTriggerCount(uint32_t u32NewTriggerCount){
     u32ClockTimerTriggerCount = u32NewTriggerCount;
 }
 
+uint32_t getClockTimerTriggerCount(void){
+    return u32ClockTimerTriggerCount;
+}
+
 void setAirwheelClockTimerTriggerCount(uint32_t u32NewTriggerCount){
     u32AirwheelClockTimerTriggerCount = u32NewTriggerCount;
 }
@@ -518,8 +522,8 @@ void vTIM3InterruptHandler(void)
                         u32ClockTimer = 0;
                     }
                 }
-            u32RecClockCount++;
         }
+        u32RecClockCount++;
     } 
 }
 
