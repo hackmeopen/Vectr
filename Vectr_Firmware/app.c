@@ -630,6 +630,7 @@ void vPinChangeInterruptHandler(void){
             if((u8PortEState & 1<<RECORD_IN_PIN) == 0){
                 setLastRecClockCount(getRecClockCount());
                 resetRecClockCount();
+                resetExternalAirwheelClock();
             }
         }
 
