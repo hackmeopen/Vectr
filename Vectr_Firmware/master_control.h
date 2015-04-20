@@ -345,7 +345,7 @@ uint32_t getLastRecClockCount(void);
 uint32_t getClockTimerTriggerCount(void);
 void setAirwheelStatusFlag(uint8_t u8NewState);
 uint8_t getAirwheelStatusFlag(void);
-void setLastRecClockCount(uint32_t u32NewValue);
+void setLastRecClockCount(void);
 void resetExternalAirwheelClock(void);
 
 

@@ -628,7 +628,7 @@ void vPinChangeInterruptHandler(void){
             event_message.u16message = u8RecordInState;
             xQueueSendFromISR(xIOEventQueue, &event_message, 0);
             if((u8PortEState & 1<<RECORD_IN_PIN) == 0){
-                setLastRecClockCount(getRecClockCount());
+                setLastRecClockCount();
                 resetRecClockCount();
                 resetExternalAirwheelClock();
             }

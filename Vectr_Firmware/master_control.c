@@ -144,6 +144,8 @@ static uint8_t u8ExternalAirWheelActiveSyncFlag;
 static uint8_t u8ExternalAirwheelClockDelayCount;
 static uint8_t u8ExternalAirwheelClockDelay;
 static uint8_t u8ExternalAirwheelExtraClocks;
+static uint8_t u8ActivateExternalAirwheelFlag;
+static uint8_t u8SkipClockEdge = FALSE;
 
 #define EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT 32
 #define MINIMUM_CLOCK_TICKS 48
@@ -258,7 +260,8 @@ static uint32_t u32RecClockCount;
 static uint32_t u32LastRecClockCount;
 static uint32_t u32AirwheelClockTimerTriggerCount;
 static uint32_t u32AirwheelClockTimer;
-static uint8_t u8AirwheelClockCount;//Counting extra clocks.
+static uint8_t u8AirwheelExtraClockCount;//Counting extra clocks.
+static uint8_t u8AirwheelDelayClockCount;//Delaying a number of clocks for slow down.
 static uint8_t u8AirwheelStatusFlag;//Faster or slower.
 
 #define SLOWER  0
@@ -288,7 +291,7 @@ uint8_t getAirwheelStatusFlag(void){
 
 void resetClockTimer(void){
     u32ClockTimer = 0;
-    u8AirwheelClockCount = 0;
+    u8AirwheelExtraClockCount = 0;
 }
 
 void setClockEnableFlag(uint8_t u8NewState){
@@ -301,7 +304,7 @@ void resetRecClockCount(void){
 
 void resetExternalAirwheelClock(void){
     if(u8AirwheelStatusFlag == FASTER){
-        u8AirwheelClockCount = 0;
+        u8AirwheelExtraClockCount = 0;
         u32AirwheelClockTimer = 0;
     }
 }
@@ -310,8 +313,8 @@ uint32_t getRecClockCount(void){
     return u32RecClockCount;
 }
 
-void setLastRecClockCount(uint32_t u32NewValue){
-    u32LastRecClockCount = u32NewValue;
+void setLastRecClockCount(void){
+    u32LastRecClockCount = u32RecClockCount;
 }
 
 uint32_t getLastRecClockCount(void){
@@ -360,19 +363,18 @@ void vTIM3InterruptHandler(void)
                     If the clock is slowed down, then we need to count extra clocks
                      * */
                     if(u8AirwheelStatusFlag == FASTER){
-                        if(u8AirwheelClockCount < u8ExternalAirwheelExtraClocks){
+                        if(u8AirwheelExtraClockCount < u8ExternalAirwheelExtraClocks){
                             if(u32AirwheelClockTimer++ >= u32AirwheelClockTimerTriggerCount){
                                 handleSwitchLEDClockBlink();
                                 SET_LOOP_SYNC_OUT;
                                 setClockPulseFlag();
                                 u32AirwheelClockTimer = 0;
-                                u8AirwheelClockCount++;
+                                u8AirwheelExtraClockCount++;
                                 u8CurrentInputClockCount++;
                             }
                         }
-                    }else{
-                        //Slower
                     }
+                    //If it's slower, we count the extra clocks in the 
                 }
         }
         u32RecClockCount++;
@@ -431,13 +433,6 @@ uint8_t handleClock(void){
     if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
         if(u32LastRecClockCount > MINIMUM_CLOCK_TICKS && u32LastRecClockCount < MAXIMUM_CLOCK_TICKS){
             u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = u32LastRecClockCount;
-            
-            u32LogValues[u16LogIndex]= u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex];
-
-            if(u16LogIndex++ > LENGTH_OF_LOG){
-                u16LogIndex = 0;
-            }
-
             u8CurrentClockArrayIndex++;
             if(u8CurrentClockArrayIndex >= LENGTH_OF_INPUT_CLOCK_ARRAY){
                 u8CurrentClockArrayIndex = 0;
@@ -445,7 +440,9 @@ uint8_t handleClock(void){
         }
 
         //With external recording, the clock output mirrors the clock input
-        if((u8ExternalAirWheelActiveFlag == FALSE || u8AirwheelStatusFlag == FASTER) || u8OperatingMode == LIVE_PLAY){
+        if((u8ExternalAirWheelActiveFlag == FALSE || 
+           (u8AirwheelStatusFlag == FASTER || u8AirwheelDelayClockCount == u8ExternalAirwheelClockDelay)) 
+           || u8OperatingMode == LIVE_PLAY){
             SET_LOOP_SYNC_OUT;
             setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
         }
@@ -473,26 +470,19 @@ uint8_t handleClock(void){
                 syncLoop();
             }
         }
-//        }else if(u8ExternalAirWheelActiveSyncFlag == TRUE){
-//           
-//            if(u8ExternalAirwheelClockDelayCount-- == 0){
-//                syncLoop();
-//               u8ExternalAirWheelActiveSyncFlag = FALSE;
-//               u8CurrentInputClockCount = 0;
-//               if(u8ClockLengthOfRecordedSequence > 1){
-//                    setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
-//                }else{
-//                    setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
-//                }
-//            }
-//        }
         
-        if((u8ExternalAirWheelActiveFlag == FALSE || u8AirwheelStatusFlag == FASTER)){
+        if(u8ExternalAirWheelActiveFlag == FALSE || 
+           (u8AirwheelStatusFlag == FASTER || u8AirwheelDelayClockCount == u8ExternalAirwheelClockDelay)) {
             handleSwitchLEDClockBlink();
             u8CurrentInputClockCount++;
 
             if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
                 u8CurrentInputClockCount = 0;
+            }
+        }else if(u8ExternalAirWheelActiveFlag == TRUE && u8AirwheelStatusFlag == SLOWER){
+            u8AirwheelDelayClockCount++;
+            if(u8AirwheelDelayClockCount >= u8ExternalAirwheelClockDelay){
+                u8AirwheelDelayClockCount = 0;
             }
         }
 
@@ -507,12 +497,20 @@ uint8_t handleClock(void){
             }
         }else{
             //The speed changed. Need to update.
+            if(u8ActivateExternalAirwheelFlag == TRUE){
+                if(u8ExternalAirwheelExtraClocks == 0 && u8ExternalAirwheelClockDelay == 0){
+                    u8ExternalAirWheelActiveFlag = FALSE;                        
+                }else{
+                    u8ExternalAirWheelActiveFlag = TRUE;
+                }
+            }
             u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
             u8NewPlaybackSpeedClockedFlag = FALSE;
             SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
             RESET_SAMPLE_TIMER;
+            u8SkipClockEdge = TRUE;
+            u32AirwheelClockTimer = u32RecClockCount;
         }
-        
     }
     else{
         //This mode is for Live Play Mode when tap tempo has been activated.
@@ -783,7 +781,7 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
 
 
 
-static uint8_t u8SkipClockEdge = FALSE;
+
 
 /* When the record input is being used to synchronize playback,
  * this function will speed up and slow down the playback clock to keep
@@ -794,6 +792,7 @@ void regulateClockPlaybackSpeed(void){
     int16_t i16Difference = u32AvgNumTicksBetweenClocks - u32TargetNumTicksBetweenClocks;
     uint32_t u32NewPlaybackSpeed;
     int32_t i32PlaybackSpeedChange;
+    uint32_t u32AirwheelPlaybackSpeed;
 
     /*If the number of clock ticks between edges changes, then we need to speed up or slow
      * down the playback clock to keep the playback speed constant.
@@ -807,22 +806,33 @@ void regulateClockPlaybackSpeed(void){
         i32PlaybackSpeedChange >>= 1;
         u32NewPlaybackSpeed = u32PlaybackSpeed + i32PlaybackSpeedChange;
 
-      //  u32LogValues[u16LogIndex]= u32PlaybackSpeed;
+        u32LogValues[u16LogIndex]= u32LastRecClockCount;
 
-        u32SecondLogValues[u16LogIndex] = u32NewPlaybackSpeed;
+        if(u32NewPlaybackSpeed < FASTEST_SPEED){
+            u32NewPlaybackSpeed = FASTEST_SPEED;
+        }else if(u32NewPlaybackSpeed >  SLOWEST_SPEED){
+            u32NewPlaybackSpeed = SLOWEST_SPEED;
+        }
+        
+        u32PlaybackSpeed = u32NewPlaybackSpeed;
+        SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+        RESET_SAMPLE_TIMER;
+        
+        u32SecondLogValues[u16LogIndex] = u32PlaybackSpeed;
 
-//        if(u16LogIndex++ > LENGTH_OF_LOG){
-//                u16LogIndex = 0;
-//            }
-
-        if(u32NewPlaybackSpeed > FASTEST_SPEED && u32NewPlaybackSpeed <  SLOWEST_SPEED){
-            u32PlaybackSpeed = u32NewPlaybackSpeed;
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-            RESET_SAMPLE_TIMER;
-
+        if(u8ExternalAirWheelActiveFlag == TRUE){  
+            u32AirwheelPlaybackSpeed = u32PlaybackSpeed * (u8ExternalAirwheelExtraClocks+1);
             /*Adjust the clock timer accordingly.*/
+            calculateClockTimer(u32AirwheelPlaybackSpeed);
+        }
+        else{
             calculateClockTimer(u32PlaybackSpeed);
         }
+
+        if(++u16LogIndex >= LENGTH_OF_LOG){
+                u16LogIndex = 0;
+        }
+
     }else{
         u8SkipClockEdge = FALSE;
     }
@@ -1535,25 +1545,21 @@ void MasterControlStateMachine(void){
                                     if(u32NewPlaybackSpeedClocked > FASTEST_SPEED){
                                         turnOffAllLEDs();
                                         u8NewPlaybackSpeedClockedFlag = TRUE;
-                                        u8ExternalAirWheelActiveFlag = TRUE;
+                                        u8ActivateExternalAirwheelFlag = TRUE;
                                         if(u8ExternalAirwheelClockDelay > 0){
                                             u8ExternalAirwheelClockDelay>>=1;
                                             setAirwheelStatusFlag(SLOWER);
                                         }else{
                                             if(u8ExternalAirwheelExtraClocks != 0){
                                                 u8ExternalAirwheelExtraClocks <<= 1;
+                                                u8ExternalAirwheelExtraClocks++;
                                             }else{
                                                 u8ExternalAirwheelExtraClocks = 1;
                                             }         
-                                            setAirwheelStatusFlag(FASTER);
+                                            u8AirwheelStatusFlag = FASTER;
                                         }
                                         
-                                        if(u8ExternalAirwheelClockDelay > 0){
-                                        //Slowed down. Must count extra clocks.
-                                            setAirwheelClockTimerTriggerCount(u32TargetNumTicksBetweenClocks << u8ExternalAirwheelClockDelay);
-                                        }else{
-                                            setAirwheelClockTimerTriggerCount(u32TargetNumTicksBetweenClocks >> u8ExternalAirwheelExtraClocks);
-                                        }
+                                        u32AirwheelClockTimerTriggerCount = u32TargetNumTicksBetweenClocks / (u8ExternalAirwheelExtraClocks+1);
                                     }
                                 }else if(i16AirWheelChange <= -EXTERNAL_AIR_WHEEL_MIN_CHANGE_INCREMENT){
                                     //Divide the current speed by 2.
@@ -1564,25 +1570,20 @@ void MasterControlStateMachine(void){
                                     if(u32NewPlaybackSpeedClocked < SLOWEST_SPEED){
                                         turnOffAllLEDs();
                                         u8NewPlaybackSpeedClockedFlag = TRUE;
-                                        u8ExternalAirWheelActiveFlag = TRUE;
+                                        u8ActivateExternalAirwheelFlag = TRUE;
                                         if(u8ExternalAirwheelExtraClocks > 0){
                                             u8ExternalAirwheelExtraClocks>>=1;
                                             setAirwheelStatusFlag(FASTER);
                                         }else{
                                             if(u8ExternalAirwheelClockDelay != 0){
                                                 u8ExternalAirwheelClockDelay <<= 1;
+                                                u8ExternalAirwheelClockDelay++;
                                             }else{
                                                 u8ExternalAirwheelClockDelay = 1;
                                             }
                                             setAirwheelStatusFlag(SLOWER);
                                         }
-                                        
-                                        if(u8ExternalAirwheelClockDelay > 0){
-                                        //Slowed down. Must count extra clocks.
-                                            setAirwheelClockTimerTriggerCount(u32TargetNumTicksBetweenClocks << u8ExternalAirwheelClockDelay);
-                                        }else{
-                                            setAirwheelClockTimerTriggerCount(u32TargetNumTicksBetweenClocks >> u8ExternalAirwheelExtraClocks);
-                                        }
+                                        u32AirwheelClockTimerTriggerCount = u32TargetNumTicksBetweenClocks / (u8ExternalAirwheelExtraClocks+1);
                                     }
                                 }
                             }
@@ -3396,6 +3397,9 @@ void startNewRecording(void){
     u8BufferDataCount = 1;
     u8ExternalAirWheelActiveFlag = FALSE;
     u8ExternalAirwheelClockDelay = 0;
+    u8AirwheelDelayClockCount = 0;
+    u8AirwheelExtraClockCount = 0;
+    u32AirwheelClockTimer = 0;
 
     setSwitchLEDState(SWITCH_LED_RED_BLINKING); 
 
