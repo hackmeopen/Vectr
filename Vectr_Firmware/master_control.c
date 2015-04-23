@@ -485,11 +485,12 @@ uint8_t handleClock(void){
             if(u8AirwheelDelayClockCount > u8ExternalAirwheelClockDelay){
                 u8AirwheelDelayClockCount = 0;
                 handleSwitchLEDClockBlink();
-            u8CurrentInputClockCount++;
-            
-            if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
-                u8CurrentInputClockCount = 0;
-            }
+                u8CurrentInputClockCount++;
+                u8ClockTriggerFlag = TRUE;
+
+                if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence){
+                    u8CurrentInputClockCount = 0;
+                }
             }
         }
 
@@ -870,10 +871,18 @@ void handleTimeQuantization(pos_and_gesture_data * pos_and_gesture_struct, uint8
     uint16_t * p_u16CurrentPosition = &time_quantize_struct.u16XPosition;
     uint16_t * p_u16NewPosition = (uint16_t *) pos_and_gesture_struct;
 
-    if(u8TapTempoSetFlag == TRUE && u8ClockTrigger == TRUE
+    
+    if(u8ExternalAirWheelActiveFlag == FALSE || u8AirwheelStatusFlag == FASTER){
+        if(u8TapTempoSetFlag == TRUE && u8ClockTrigger == TRUE
        || (p_VectrData->u8Source[RECORD] == EXTERNAL && u8RecordTrigger == TRIGGER_WENT_HIGH)){
-        u8ClockFlag = TRUE;
+            u8ClockFlag = TRUE;
+            
+        }
+    }else if(u8AirwheelStatusFlag == SLOWER && u8ClockTrigger == TRUE){
+            u8ClockFlag = TRUE; 
+            u8ClockTriggerFlag = FALSE;
     }
+    
 
     for(i=0;i<NUMBER_OF_OUTPUTS;i++){
         //If time quantization for that axis is on.
@@ -2452,8 +2461,9 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
 
             //Playback is running. Run the clock
             setClockEnableFlag(TRUE);
-            handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
+            
             slewPosition(p_mem_pos_and_gesture_struct);
+            handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
             //Handle the gate output
             gateHandler(p_mem_pos_and_gesture_struct);
        }
