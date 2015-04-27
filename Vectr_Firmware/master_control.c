@@ -299,7 +299,9 @@ void setClockEnableFlag(uint8_t u8NewState){
 }
 
 void resetRecClockCount(void){
-    u32RecClockCount = 0;
+    if(u8TapTempoModeActiveFlag == FALSE){
+        u32RecClockCount = 0;
+    }
 }
 
 void resetExternalAirwheelClock(void){
@@ -390,6 +392,11 @@ void resetInputClockHandling(void){
     u32NumTicksSinceLastClock = 0;
     u32AvgNumTicksBetweenClocks = 0;
     u8CurrentClockArrayIndex = 0;
+    u8ExternalAirWheelActiveFlag = FALSE;
+    u8ExternalAirwheelClockDelay = 0;
+    u8ExternalAirwheelExtraClocks = 0;
+    u8AirwheelDelayClockCount = 0;
+    u8AirwheelExtraClockCount = 0;
 
     for(i=0; i < LENGTH_OF_INPUT_CLOCK_ARRAY; i++ ){
         u32NumTicksBetweenClocksArray[i] = 0;
@@ -675,23 +682,24 @@ void runTapTempo(void){
         if(u8TapTempoSetFlag == FALSE){
             
             if(u8InitTapTempoFlag == TRUE){
-                resetRecClockCount();
+                u32RecClockCount = 0;
                 resetClockTimer();
                 u8InitTapTempoFlag = FALSE;
                 setClockEnableFlag(TRUE);
+                SET_CLOCK_TIMER_PERIOD(u32LogSpeedTable[ZERO_SPEED_INDEX]>>3);
+                RESET_CLOCK_TIMER;
                 START_CLOCK_TIMER;
                 u8CurrentInputClockCount = 0;
                 setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
             }else{
-                u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
-                resetRecClockCount();
+                u32TapTempoArray[u8TapTempoArrayIndex] = u32RecClockCount;
+                u32RecClockCount = 0;
                 setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
                 if(u8TapTempoArrayIndex == LENGTH_OF_TAP_TEMPO_ARRAY - 1){                   
                     u8TapTempoArrayIndex = 0;
                     setClockTimerTriggerCount(calculateTapTempo());
                     u8TimeOutTimer = 100;
                     u8TapTempoSetFlag = TRUE;
-                    resetClockTimer();
                 }
                 u8CurrentInputClockCount++;
                 u8TapTempoArrayIndex++;
@@ -703,8 +711,8 @@ void runTapTempo(void){
         else{
             
             //We have a complete array.
-            u32TapTempoArray[u8TapTempoArrayIndex] = getRecClockCount();
-            resetRecClockCount();
+            u32TapTempoArray[u8TapTempoArrayIndex] = u32RecClockCount;
+            u32RecClockCount = 0;
             setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
             if(u8TapTempoArrayIndex == LENGTH_OF_TAP_TEMPO_ARRAY - 1){
                 u8TapTempoArrayIndex = 0;
@@ -2462,8 +2470,8 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
             //Playback is running. Run the clock
             setClockEnableFlag(TRUE);
             
-            slewPosition(p_mem_pos_and_gesture_struct);
             handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
+            slewPosition(p_mem_pos_and_gesture_struct);
             //Handle the gate output
             gateHandler(p_mem_pos_and_gesture_struct);
        }
@@ -3430,6 +3438,7 @@ void startNewRecording(void){
     u8BufferDataCount = 1;
     u8ExternalAirWheelActiveFlag = FALSE;
     u8ExternalAirwheelClockDelay = 0;
+    u8ExternalAirwheelExtraClocks = 0;
     u8AirwheelDelayClockCount = 0;
     u8AirwheelExtraClockCount = 0;
     u32AirwheelClockTimer = 0;
@@ -4325,9 +4334,18 @@ void slewPosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     p_VectrData->u16CurrentYPosition = u16NewYPosition;
     p_VectrData->u16CurrentZPosition = u16NewZPosition;
 
-    p_pos_and_gesture_struct->u16XPosition = u16NewXPosition;
-    p_pos_and_gesture_struct->u16YPosition = u16NewYPosition;
-    p_pos_and_gesture_struct->u16ZPosition = u16NewZPosition;
+    if(p_VectrData->u8TimeQuantization[X_OUTPUT_INDEX] == FALSE){
+        p_pos_and_gesture_struct->u16XPosition = u16NewXPosition;
+    }
+   
+    if(p_VectrData->u8TimeQuantization[Y_OUTPUT_INDEX] == FALSE){
+        p_pos_and_gesture_struct->u16YPosition = u16NewYPosition;
+    }
+    
+    if(p_VectrData->u8TimeQuantization[Z_OUTPUT_INDEX] == FALSE){
+        p_pos_and_gesture_struct->u16ZPosition = u16NewZPosition;
+    }
+    
 
 }
 
