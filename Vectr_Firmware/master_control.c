@@ -325,8 +325,8 @@ uint32_t getLastRecClockCount(void){
 
 void vTIM3InterruptHandler(void)
 {
-    uint8_t u8TapTempoSetFlag;
-    uint8_t u8ExternalAirWheelActiveFlag;
+    
+
 
     CLEAR_CLOCK_TIMER_INT;
 
@@ -337,9 +337,7 @@ void vTIM3InterruptHandler(void)
          /*If the count has reached the trigger count, it's time for a pulse.*/
         //Or if we're in live play mode and tap tempo has been activated.
         if(getPlaybackRunStatus() == RUN || u8TapTempoSetFlag == TRUE){
-
-                u8ExternalAirWheelActiveFlag = getu8ExternalAirWheelActiveFlag();
-
+                
                 /*If record is sync'ed to external then clock pulses are
                  * duplicated from the record input.
                  */
@@ -350,7 +348,7 @@ void vTIM3InterruptHandler(void)
                     if(u32ClockTimer++ >= u32ClockTimerTriggerCount){
                         SET_LOOP_SYNC_OUT;
                         setClockPulseFlag();
-                        setClockTriggerFlag();//Let master control know a clock edge occurred.
+                        u8ClockTriggerFlag = TRUE;//Let master control know a clock edge occurred.
                         u32ClockTimer = 0;
                     }
                 }else if(u8ExternalAirWheelActiveFlag == TRUE){
@@ -438,7 +436,8 @@ uint8_t handleClock(void){
      * speed to suit the change in tempo.
      * 2. We also want to start and stop the playback based on whether or not the
      */
-    if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
+    if(p_VectrData->u8Source[RECORD] == EXTERNAL){
+   // if(p_VectrData->u8Source[RECORD] == EXTERNAL || u8TapTempoSetFlag == TRUE){
         if(u32LastRecClockCount > MINIMUM_CLOCK_TICKS && u32LastRecClockCount < MAXIMUM_CLOCK_TICKS){
             u32NumTicksBetweenClocksArray[u8CurrentClockArrayIndex] = u32LastRecClockCount;
             u8CurrentClockArrayIndex++;
@@ -504,35 +503,37 @@ uint8_t handleClock(void){
         /* Calculate the running average of time between clocks.
          * If the result has changed, speed up or slow down the playback.
          */
-        if(u8NewPlaybackSpeedClockedFlag != TRUE){
+        if(p_VectrData->u8Source[RECORD] == EXTERNAL){
+            if(u8NewPlaybackSpeedClockedFlag != TRUE){
 
-            if(u32LastRecClockCount > MINIMUM_CLOCK_TICKS){
-                calculateAvgNumClicksBetweenClocks();
-               // setAvgNumClicksBetweenClocks(u32LastRecClockCount);
-            }
-        }else{
-            //The speed changed. Need to update.
-            if(u8ActivateExternalAirwheelFlag == TRUE){
-                if(u8ExternalAirwheelExtraClocks == 0 && u8ExternalAirwheelClockDelay == 0){
-                    u8ExternalAirWheelActiveFlag = FALSE;                        
-                }else{
-                    u8ExternalAirWheelActiveFlag = TRUE;
+                if(u32LastRecClockCount > MINIMUM_CLOCK_TICKS){
+                    calculateAvgNumClicksBetweenClocks();
+                   // setAvgNumClicksBetweenClocks(u32LastRecClockCount);
                 }
+            }else{
+                //The speed changed. Need to update.
+                if(u8ActivateExternalAirwheelFlag == TRUE){
+                    if(u8ExternalAirwheelExtraClocks == 0 && u8ExternalAirwheelClockDelay == 0){
+                        u8ExternalAirWheelActiveFlag = FALSE;                        
+                    }else{
+                        u8ExternalAirWheelActiveFlag = TRUE;
+                    }
+                }
+                u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
+                u8NewPlaybackSpeedClockedFlag = FALSE;
+                SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
+                RESET_SAMPLE_TIMER;
+               u8SkipClockEdge = TRUE;
+                if(u8AirwheelStatusFlag == FASTER){
+                    u32AirwheelPlaybackSpeed = u32PlaybackSpeed * (u8ExternalAirwheelExtraClocks+1);
+                }
+                else{
+                    u32AirwheelPlaybackSpeed = u32PlaybackSpeed / (u8ExternalAirwheelClockDelay+1);
+                }
+                /*Adjust the clock timer accordingly.*/
+                calculateClockTimer(u32AirwheelPlaybackSpeed);
+                u32AirwheelClockTimer = u32RecClockCount;
             }
-            u32PlaybackSpeed = u32NewPlaybackSpeedClocked;
-            u8NewPlaybackSpeedClockedFlag = FALSE;
-            SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
-            RESET_SAMPLE_TIMER;
-           u8SkipClockEdge = TRUE;
-            if(u8AirwheelStatusFlag == FASTER){
-                u32AirwheelPlaybackSpeed = u32PlaybackSpeed * (u8ExternalAirwheelExtraClocks+1);
-            }
-            else{
-                u32AirwheelPlaybackSpeed = u32PlaybackSpeed / (u8ExternalAirwheelClockDelay+1);
-            }
-            /*Adjust the clock timer accordingly.*/
-            calculateClockTimer(u32AirwheelPlaybackSpeed);
-            u32AirwheelClockTimer = u32RecClockCount;
         }
     }
     else{
@@ -569,17 +570,6 @@ void handleSwitchLEDClockBlink(void){
         }
 
     }else if(u8OperatingMode == PLAYBACK || u8OperatingMode == SEQUENCING){
-//        if(u8ExternalAirWheelActiveSyncFlag ==  FALSE){
-////            if(u8ExternalAirWheelActiveFlag == TRUE){
-////               u8CurrentInputClockCount++;
-////
-////               if(u8CurrentInputClockCount >= u8ClockLengthOfRecordedSequence - 1){
-////                   // u8CurrentInputClockCount = 0;
-////                    u8ExternalAirWheelActiveSyncFlag = TRUE;
-////                    u8ExternalAirwheelClockDelayCount = u8ExternalAirwheelClockDelay;
-////                }
-////            }
-
 
             if(u8CurrentInputClockCount != 0){
                 setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
@@ -590,8 +580,6 @@ void handleSwitchLEDClockBlink(void){
                     setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
                 }
             }
-    //   }
-
     }else if(u8OperatingMode == OVERDUBBING){
         if(u8ExternalAirWheelActiveFlag == TRUE){
            u8CurrentInputClockCount++;
@@ -690,6 +678,7 @@ void runTapTempo(void){
                 RESET_CLOCK_TIMER;
                 START_CLOCK_TIMER;
                 u8CurrentInputClockCount = 0;
+                u8ExternalAirWheelActiveFlag = FALSE;
                 setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
             }else{
                 u32TapTempoArray[u8TapTempoArrayIndex] = u32RecClockCount;
@@ -802,10 +791,6 @@ uint32_t calculateAvgNumClicksBetweenClocks(void){
 
     return u32AvgNumTicksBetweenClocks;
 }
-
-
-
-
 
 /* When the record input is being used to synchronize playback,
  * this function will speed up and slow down the playback clock to keep
@@ -1338,6 +1323,8 @@ void MasterControlStateMachine(void){
             slewPosition(&pos_and_gesture_struct);
             gateHandler(&pos_and_gesture_struct);
             xQueueSend(xLEDQueue, &pos_and_gesture_struct, 0);
+            mutePosition(&pos_and_gesture_struct);
+            linearizePosition(&pos_and_gesture_struct);
             scaleRange(&pos_and_gesture_struct);
             /*Quantize the position.*/
             quantizePosition(&pos_and_gesture_struct);
@@ -2274,6 +2261,10 @@ void MasterControlStateMachine(void){
                     u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
                     switch(u8GestureFlag){
                         case MENU_MODE:
+                            //Store the mute settings
+                            copyCurrentSettingsToFileTable(0);
+                            u8MemCommand = WRITE_FLASH_FILE_TABLE;
+                            xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);
                             setLEDAlternateFuncFlag(FALSE);
                             turnOffAllLEDs();
                             Flags.u8SequencingFlag = FALSE;
@@ -2514,7 +2505,11 @@ void runPlaybackMode(uint8_t u8RecordTrigger){
         u8HoldState = OFF;
         if(u8OperatingMode != SEQUENCING){
             u8OperatingMode = LIVE_PLAY;
-            setPlaybackRunStatus(STOP);
+            if(u8TapTempoSetFlag == FALSE){
+                setPlaybackRunStatus(STOP);
+            }else{
+                u8PlaybackRunFlag = FALSE;
+            }
         }
         u8LivePlayActivationFlag = FALSE;
    }
@@ -3462,6 +3457,7 @@ void startNewRecording(void){
          * switch LED.
          */
         resetInputClockHandling();
+        u32PlaybackSpeed = u32LogSpeedTable[ZERO_SPEED_INDEX];
     }
     else{
         //Internal recording, no tap tempo.
@@ -3767,6 +3763,10 @@ void switchStateMachine(void){
                     if(u8PlaybackRunFlag == PAUSED){
                         //Restart the loop.
                         setRAMRetriggerFlag();
+                        //Reset the loop position.
+                        resetRecClockCount();
+                        resetClockTimer();
+                        u8CurrentInputClockCount = 0;
                     }else{
                         if(p_VectrData->u8Source[PLAY] == SWITCH){
                             if(p_VectrData->u8PlaybackMode != FLIP &&
@@ -4528,12 +4528,12 @@ uint8_t getPlaybackRunStatus(void){
 
 void setPlaybackRunStatus(uint8_t u8NewState){
     u8PlaybackRunFlag = u8NewState;
-
+    
     //If playback is set to run, start the clock timer
     if(u8PlaybackRunFlag == RUN){
         START_CLOCK_TIMER;
     }
-    else{// if(u8PlaybackRunFlag != PAUSED){
+    else{
         STOP_CLOCK_TIMER;
     }
 
