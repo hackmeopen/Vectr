@@ -178,6 +178,8 @@ void dacStateMachine(void){
             break;
         }
 }
+uint16_t u16Log[1000];
+uint16_t u16index = 0;
 
 void dacDMA(void){
     pos_and_gesture_data pos_and_gesture_struct;
@@ -192,7 +194,10 @@ void dacDMA(void){
     u8SPI_DACADC_Buffer[0] = LOAD_DAC_A_MASK;
     u8SPI_DACADC_Buffer[1] =  pos_and_gesture_struct.u16XPosition>>8;
     u8SPI_DACADC_Buffer[2] = pos_and_gesture_struct.u16XPosition;
-    
+    u16Log[u16index] = pos_and_gesture_struct.u16XPosition;
+    if(++u16index == 1000){
+        u16index = 0;
+    }
     runDACADC_DMA();
     
     xSemaphoreTake(xSemaphoreDMA_3_RX, portMAX_DELAY);

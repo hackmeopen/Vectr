@@ -401,7 +401,7 @@ void resetInputClockHandling(void){
     }
 }
 
-#define LENGTH_OF_LOG  32
+#define LENGTH_OF_LOG  1000
 uint16_t  u16LogIndex = 0;
 uint32_t u32LogValues[LENGTH_OF_LOG];
 uint32_t u32SecondLogValues[LENGTH_OF_LOG];
@@ -451,7 +451,7 @@ uint8_t handleClock(void){
            (u8AirwheelStatusFlag == FASTER || u8AirwheelDelayClockCount == u8ExternalAirwheelClockDelay)) 
            || u8OperatingMode == LIVE_PLAY){
             SET_LOOP_SYNC_OUT;
-            setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off.
+            setClockPulseFlag();//Setting this flag lets the TIM5 routine know to turn the pulse off
         }
     }
 
@@ -544,6 +544,7 @@ uint8_t handleClock(void){
 
         if(u8CurrentInputClockCount == 1 << p_VectrData->u8NumClocks){
             u8CurrentInputClockCount = 0;
+
         }
     }
 
@@ -567,6 +568,10 @@ void handleSwitchLEDClockBlink(void){
             setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
         }else{
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+            if(p_VectrData->u8GateMode == RESET_GATE){
+                SET_GATE_OUT_PORT;
+                setGatePulseFlag(TRUE);
+            }
         }
 
     }else if(u8OperatingMode == PLAYBACK || u8OperatingMode == SEQUENCING){
@@ -578,6 +583,10 @@ void handleSwitchLEDClockBlink(void){
                     setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
                 }else{
                     setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+                }
+                if(p_VectrData->u8GateMode == RESET_GATE){
+                    SET_GATE_OUT_PORT;
+                    setGatePulseFlag(TRUE);
                 }
             }
     }else if(u8OperatingMode == OVERDUBBING){
@@ -603,6 +612,10 @@ void handleSwitchLEDClockBlink(void){
             }else{
                 setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
             }
+            if(p_VectrData->u8GateMode == RESET_GATE){
+                SET_GATE_OUT_PORT;
+                setGatePulseFlag(TRUE);
+            }
         }
     }else if(u8OperatingMode == LIVE_PLAY){
         //This mode is for Live Play Mode when tap tempo has been activated.
@@ -610,6 +623,10 @@ void handleSwitchLEDClockBlink(void){
             setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
         }else{
             setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
+            if(p_VectrData->u8GateMode == RESET_GATE){
+                SET_GATE_OUT_PORT;
+                setGatePulseFlag(TRUE);
+            }
         }
     }else if(u8OperatingMode == AIR_SCRATCHING){
         if(u8AirScratchRunFlag == FALSE){
@@ -624,6 +641,10 @@ void handleSwitchLEDClockBlink(void){
                     setSwitchLEDState(SWITCH_LED_RED_BLINK_ONCE);
                 }else{
                     setSwitchLEDState(SWITCH_LED_GREEN_BLINK_ONCE);
+                }
+                if(p_VectrData->u8GateMode == RESET_GATE){
+                    SET_GATE_OUT_PORT;
+                    setGatePulseFlag(TRUE);
                 }
             }
         }else{
@@ -815,7 +836,7 @@ void regulateClockPlaybackSpeed(void){
         i32PlaybackSpeedChange >>= 1;
         u32NewPlaybackSpeed = u32PlaybackSpeed + i32PlaybackSpeedChange;
 
-        u32LogValues[u16LogIndex]= u32LastRecClockCount;
+       // u32LogValues[u16LogIndex]= u32LastRecClockCount;
 
         if(u32NewPlaybackSpeed < FASTEST_SPEED){
             u32NewPlaybackSpeed = FASTEST_SPEED;
@@ -826,8 +847,6 @@ void regulateClockPlaybackSpeed(void){
         u32PlaybackSpeed = u32NewPlaybackSpeed;
         SET_SAMPLE_TIMER_PERIOD(u32PlaybackSpeed);
         RESET_SAMPLE_TIMER;
-        
-        u32SecondLogValues[u16LogIndex] = u32PlaybackSpeed;
 
         /*This keeps the clock timer constant with external airwheel changes, but keeps
          everything sync'ed. You have to run it slower for faster airwheel. You have to run it
@@ -845,11 +864,6 @@ void regulateClockPlaybackSpeed(void){
         else{
             calculateClockTimer(u32PlaybackSpeed);
         }
-
-        if(++u16LogIndex >= LENGTH_OF_LOG){
-                u16LogIndex = 0;
-        }
-
     }else{
         u8SkipClockEdge = FALSE;
     }
@@ -1159,6 +1173,8 @@ void MasterControlStateMachine(void){
 
             /*Send the data out to the DAC.*/
             xQueueSend(xSPIDACQueue, &pos_and_gesture_struct, 0);
+            
+          u32SecondLogValues[u16LogIndex]= pos_and_gesture_struct.u16XPosition;
 
             /*If tap tempo is actively being set, run the mode*/
             if(u8TapTempoModeActiveFlag == TRUE){
@@ -1846,7 +1862,7 @@ void MasterControlStateMachine(void){
                  and in the second, we just use the data.*/
                 if(u8BufferDataCount == 0){
 
-                    xQueueReceive(xRAMReadQueue, &memBuffer, 0);
+                    xQueueReceive(xRAMReadQueue, &memBuffer, 1);
                     p_mem_pos_and_gesture_struct = &memBuffer.sample_1;
                     p_overdub_pos_and_gesture_struct = &overdubBuffer.sample_1;
                     u8BufferDataCount++;
@@ -1859,8 +1875,7 @@ void MasterControlStateMachine(void){
 
                 /*This overdubbing works like a punch in/punchout except the punch in event
                  is the hand being present and the punch out is when the hand leaves. */
-                if(Flags.u8OverdubActiveFlag == TRUE 
-                   && (u8HandPresentFlag == TRUE || pos_and_gesture_struct.u16ZPosition > 0)){
+                if(Flags.u8OverdubActiveFlag == TRUE && u8HandPresentFlag == TRUE){
                     //Overdub the axes with overdub active and for the others write back the accessed data
                     if(p_VectrData->u8OverdubStatus[X_OUTPUT_INDEX] == 1 && u8HandPresentFlag == TRUE){
                         p_mem_pos_and_gesture_struct->u16XPosition = pos_and_gesture_struct.u16XPosition;
@@ -1898,6 +1913,7 @@ void MasterControlStateMachine(void){
                         u8MemCommand = WRITETHENREAD_RAM;
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for OVERDUB
                         xQueueSend(xRAMWriteQueue, &overdubBuffer, 0);
+                           
                     }
 
                     handleTimeQuantization(p_mem_pos_and_gesture_struct, u8ClockTriggerFlag, u8RecordTrigger);
@@ -1914,6 +1930,10 @@ void MasterControlStateMachine(void){
                         u8MemCommand = READ_RAM;
                         xQueueSend(xMemInstructionQueue, &u8MemCommand, 0);//Set up for READ
                     }
+                    p_overdub_pos_and_gesture_struct->u16XPosition = p_mem_pos_and_gesture_struct->u16XPosition;
+                    p_overdub_pos_and_gesture_struct->u16YPosition = p_mem_pos_and_gesture_struct->u16YPosition;
+                    p_overdub_pos_and_gesture_struct->u16ZPosition = p_mem_pos_and_gesture_struct->u16ZPosition;
+                    
 
                     if(u8HoldState == OFF){
 
@@ -1957,6 +1977,11 @@ void MasterControlStateMachine(void){
                     
                     }
             }
+            
+             u32LogValues[u16LogIndex] = p_overdub_pos_and_gesture_struct->u16YPosition;
+             if(u16LogIndex++ == LENGTH_OF_LOG){
+                u16LogIndex = 0;
+               }
 
             //Clear the flag
             if(u8LivePlayActivationFlag == TRUE){
@@ -2939,11 +2964,12 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
                 }
                 break;
             case PENTATONIC:
-                u16CurrentPosition[i] = scaleSearch(u16PentatonicScale, u16temp, LENGTH_OF_PENTATONIC_SCALE);
+                u16CurrentPosition[i] = u16PentatonicScale[32];
+           /*     u16CurrentPosition[i] = scaleSearch(u16PentatonicScale, u16temp, LENGTH_OF_PENTATONIC_SCALE);
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
                     u8QuantizationGateFlag = TRUE;
                 }
-                break;
+*/                break;
             case OCTAVE:
                 u16CurrentPosition[i] = scaleSearch(u16OctaveScale, u16temp, LENGTH_OF_OCTAVE_SCALE);
                 if(u16CurrentPosition[i] != u16LastQuantization[i]){
@@ -2960,7 +2986,7 @@ void quantizePosition(pos_and_gesture_data * p_pos_and_gesture_struct){
     p_pos_and_gesture_struct->u16XPosition = u16CurrentPosition[0];
     p_pos_and_gesture_struct->u16YPosition = u16CurrentPosition[1];
     p_pos_and_gesture_struct->u16ZPosition = u16CurrentPosition[2];
-
+      
 }
 
 /*Execute the modulation routine. This routine only runs when a cable is plugged
@@ -4619,14 +4645,6 @@ void setNumberOfClockPulses(void){
 
 uint32_t getNextClockPulseIndex(void){
     return u32NextClockPulseIndex;
-}
-
-uint8_t getGatePulseFlag(void){
-    return u8GatePulseFlag;
-}
-
-void setGatePulseFlag(uint8_t u8NewState){
-    u8GatePulseFlag = u8NewState;
 }
 
 void setResetFlag(void){

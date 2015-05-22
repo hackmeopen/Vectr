@@ -427,6 +427,10 @@ void setClockPulseFlag(void){
     u8ClockPulseFlag = TRUE;
 }
 
+void setGatePulseFlag(uint8_t u8NewState){
+    u8GatePulseFlag = u8NewState;
+}
+
 
 void
 vTIM5InterruptHandler(void){

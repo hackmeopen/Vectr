@@ -775,7 +775,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
             }
     }
 
-   // if(u16_ZPosition != 0){
-            u16_red_LED_duty_cycle = (u16_ZPosition*MAX_BRIGHTNESS/MAX_LOCATION);
-   // }
+    if(u16_ZPosition != 0){
+          u16_red_LED_duty_cycle = (u16_ZPosition*MAX_BRIGHTNESS/MAX_LOCATION);
+    }
 }
