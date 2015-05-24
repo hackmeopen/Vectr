@@ -1699,8 +1699,24 @@ uint32_t getRAMReadAddress(void){
 }
 
 void synchronizeReadWriteRAMAddress(uint32_t u32NewAddress){
-    u32RAMReadAddress = u32NewAddress;
+    uint8_t u8PlaybackDirection = getPlaybackDirection();
     u32RAMWriteAddress = u32NewAddress;
+    
+    if(u8PlaybackDirection == FORWARD_PLAYBACK){
+        if(u8ClockSyncFlag == FALSE && u32RAMReadAddress > NUMBER_OF_DATA_BYTES){
+            u32RAMWriteAddress = u32RAMReadAddress - NUMBER_OF_DATA_BYTES;
+        }else{
+            u32RAMReadAddress = u32SequenceEndAddress - NUMBER_OF_DATA_BYTES;
+        }
+    }
+    else{
+        if(u8ClockSyncFlag == FALSE && u32RAMReadAddress < u32SequenceEndAddress){
+            u32RAMWriteAddress = u32RAMReadAddress + NUMBER_OF_DATA_BYTES;
+        }else{
+            u32RAMReadAddress = NUMBER_OF_DATA_BYTES;
+        }
+    }
+          
 }
 
 void setRAMWriteAddress(uint32_t u32Address){

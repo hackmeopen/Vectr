@@ -70,7 +70,7 @@
 #define BOTTOM_TOUCH    MGC3130_TOUCH_BOTTOM
 #define CENTER_TOUCH    MGC3130_TOUCH_CENTER
 
-#define GESTURE_DEBOUNCE_TIMER_RESET    50
+#define GESTURE_DEBOUNCE_TIMER_RESET    100
 
 static VectrDataStruct VectrData;
 static VectrDataStruct * p_VectrData;
@@ -2162,28 +2162,31 @@ void MasterControlStateMachine(void){
             }
 
             if(u8MessageReceivedFlag == TRUE){
-                u16TouchData = pos_and_gesture_struct.u16Touch;
-                if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){//double taps
-                    u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
-                    switch(u8GestureFlag){
-                        case MENU_MODE:
-                            setLEDAlternateFuncFlag(FALSE);
-                            turnOffAllLEDs();
-                            Flags.u8SequencingFlag = FALSE;
-                            setLEDAlternateFuncFlag(FALSE);
-                            setIndicateSequenceModeFlag(FALSE);
-                            u8OperatingMode =  u8PreviousOperatingMode;
-                            u8PlaybackRunFlag = RUN;
-                            /*Copy the current data structure into the standard local
-                             data structure.*/
-                            if(getStoredSequenceLocationFlag() != STORED_IN_RAM){
-                                p_VectrData = &VectrData;
-                                loadSettingsFromFileTable(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
-                            }
+                if(u8GestureDebounceTimer == 0){
+                    u16TouchData = pos_and_gesture_struct.u16Touch;
+                    if(u16TouchData >= MGC3130_DOUBLE_TAP_BOTTOM){//double taps
+                        u8GestureFlag = decodeDoubleTapGesture(u16TouchData);
+                        switch(u8GestureFlag){
+                            case MENU_MODE:
+                                u8GestureDebounceTimer = GESTURE_DEBOUNCE_TIMER_RESET;
+                                setLEDAlternateFuncFlag(FALSE);
+                                turnOffAllLEDs();
+                                Flags.u8SequencingFlag = FALSE;
+                                setLEDAlternateFuncFlag(FALSE);
+                                setIndicateSequenceModeFlag(FALSE);
+                                u8OperatingMode =  u8PreviousOperatingMode;
+                                u8PlaybackRunFlag = RUN;
+                                /*Copy the current data structure into the standard local
+                                 data structure.*/
+                                if(getStoredSequenceLocationFlag() != STORED_IN_RAM){
+                                    p_VectrData = &VectrData;
+                                    loadSettingsFromFileTable(u8SequenceModeIndexes[u8SequenceModeSelectedSequenceIndex]);
+                                }
 
-                            break;
-                        default:
-                            break;
+                                break;
+                            default:
+                                break;
+                        }
                     }
                 }
                 else if(Flags.u8SequencingFlag != TRUE){

@@ -735,7 +735,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
     u16_YPosition = p_and_g_struct->u16YPosition;
     u16_ZPosition = p_and_g_struct->u16ZPosition;
 
-    if(u16_XPosition != 0 && u16_YPosition != 0){
+    if(1){//u16_XPosition != 0 && u16_YPosition != 0){
         //Step through the blue LEDs determining brightness by the relative location of the LED to the hand position
         for(u8_index = 0; u8_index < NUM_OF_BLUE_LEDS; u8_index++){
 
@@ -775,7 +775,7 @@ void convert_position_to_leds(pos_and_gesture_data * p_and_g_struct){
             }
     }
 
-    if(u16_ZPosition != 0){
+    //if(u16_ZPosition != 0){
           u16_red_LED_duty_cycle = (u16_ZPosition*MAX_BRIGHTNESS/MAX_LOCATION);
-    }
+//    }
 }
